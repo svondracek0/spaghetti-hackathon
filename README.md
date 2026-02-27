@@ -1,6 +1,11 @@
 # Spaghetti Hackathon
 
-This project is part of the Spaghetti Hackathon.
+This project, being produced as part of the Newsmatics Hackathon, is aiming to provide user with a tool which llows to input the following information:
+
+- specific person/organization
+- 
+
+
 
 ## Getting Started
 
