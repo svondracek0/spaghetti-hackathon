@@ -11,7 +11,7 @@ This project, being produced as part of the Newsmatics Hackathon, is aiming to p
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.11+
 - Node.js (for frontend)
 
 ### Python Setup
