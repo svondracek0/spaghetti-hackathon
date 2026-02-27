@@ -32,7 +32,7 @@ async def search_news(opponents: str, context: str, topics: str):
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(f"{BASE_URL}/articles/hybrid-search", params=params, headers=headers)
+            response = await client.get(f"{BASE_URL}/articles/hybrid-search", params=params, headers=headers, timeout=20.0)
             response.raise_for_status()
             data = response.json()
             
@@ -51,5 +51,7 @@ async def search_news(opponents: str, context: str, topics: str):
                 })
             return formatted_articles
         except Exception as e:
+            import traceback
             print(f"Error fetching news from Newsmatics: {e}")
+            print(traceback.format_exc())
             return []

@@ -1,20 +1,40 @@
 import os
+import asyncio
 from google import genai
 from dotenv import load_dotenv
 
+# 1. SETUP: Ensure .env is loaded from the current directory
 load_dotenv()
 
 # Load the environment variable explicitly
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    # Fallback to check if it's under GOOGLE_API_KEY just in case
-    api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
+if not api_key:
+    print("⚠️ WARNING: No API Key found. Ensure GEMINI_API_KEY is in your .env file.")
+
+# Initialize the client without restricting the version to 'v1'
 client = genai.Client(api_key=api_key)
 
-from .newsmatics import search_news
+# 2. IMPORT HANDLING: 
+# When running standalone, we use a try/except to handle the local module
+try:
+    from .newsmatics import search_news
+except ImportError:
+    from newsmatics import search_news
+    # Mock function for testing if newsmatics.py isn't in the same folder
+    async def search_news(opponents, context, topics):
+        print(f"--- Mocking news search for: {opponents} ---")
+        return [
+            {
+                "title": "Recent Climate Policy Debate",
+                "content": "Recent discussions highlight the divide on carbon tax implementation.",
+                "url": "https://example.com/news/1"
+            }
+        ]
 
 async def prepare_debate_strategy(opponents: str, context: str, topics: str):
+    print(f"🚀 Starting strategy generation for debate against: {opponents}...")
+    
     # 1. Fetch relevant news
     news_articles = await search_news(opponents, context, topics)
     
@@ -50,10 +70,35 @@ async def prepare_debate_strategy(opponents: str, context: str, topics: str):
     Write in a professional, strategic, and encouraging tone. Use the provided news articles to ground your strategy in current events.
     """
     
-    # 4. Generate response (non-streaming)
-    response = client.models.generate_content(
-        model='gemini-1.5-flash',
-        contents=prompt
-    )
+    # 4. Generate response using the correct model string
+    try:
+        # Check available models (optional debug line)
+        # models = [m.name for m in client.models.list()]
+        # print(f"Available models: {models}")
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"❌ LLM Strategy Generation Error: {e}")
+        return None
+
+# 3. EXECUTION BLOCK
+if __name__ == "__main__":
+    # Test Parameters
+    OPPONENT = "Donald Trump"
+    CONTEXT = "US Presidential Election"
+    TOPICS = "Climate Change and Green Energy"
+
+    # Run the async function and print results
+    result = asyncio.run(prepare_debate_strategy(OPPONENT, CONTEXT, TOPICS))
     
-    return response.text
+    if result:
+        print("\n" + "="*50)
+        print("DEBATE STRATEGY GENERATED:")
+        print("="*50 + "\n")
+        print(result)
+    else:
+        print("Failed to generate strategy.")
