@@ -1,12 +1,23 @@
+import asyncio
+import logging
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .database import engine, get_db, Base
-from . import schemas, crud
+from . import schemas, crud, models
 from .newsmatics import search_news_for_topic
-from .llm import generate_topic_strategy
+from .llm import (
+    enrich_opponent,
+    generate_discovery_queries,
+    cluster_articles,
+    generate_topic_strategy,
+    generate_win_strategy,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -21,21 +32,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def camel_response(data, status_code: int = 200):
-    """Return a JSONResponse with camelCase keys."""
-    if isinstance(data, list):
-        json_data = [
-            schemas.CamelModel.model_validate(item).model_dump(mode="json", by_alias=True)
-            if isinstance(item, dict) else item
-            for item in data
-        ]
-    elif isinstance(data, dict):
-        json_data = data
-    else:
-        json_data = data
-    return JSONResponse(content=json_data, status_code=status_code)
 
 
 # --- Preparations ---
@@ -86,71 +82,266 @@ def list_opponents(db: Session = Depends(get_db)):
     return [schemas.OpponentResponse.model_validate(r).model_dump(mode="json", by_alias=True) for r in results]
 
 
-# --- Strategy Generation ---
+# --- Strategy Generation Pipeline ---
+
+def _build_predefined_queries(
+    main_topic: str,
+    opponent_names: list[str],
+    debate_context: str,
+) -> list[str]:
+    """Step 3a: Generate predefined search queries."""
+    queries = []
+    if main_topic:
+        queries.append(f"{main_topic} controversy")
+        queries.append(f"{main_topic} criticism")
+    for name in opponent_names:
+        queries.append(f"{main_topic} {name} scandal")
+        if debate_context:
+            queries.append(f"{name} {debate_context}")
+    return queries
+
 
 @app.post("/api/preparations/{prep_id}/generate")
 async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     """
-    For each strategy topic in the preparation:
-    1. Search Newsmatics for relevant articles
-    2. Use the LLM to generate questions, arguments, and analysis
-    3. Update the strategy topic in the database
-    4. Set the preparation status to 'Ready'
+    Full pipeline:
+    1. Enrich opponents (parallel)
+    2. Search articles for predefined topics (parallel)
+    3a/3b. Generate discovery queries (parallel with 1 & 2)
+    3c. Run discovery search
+    4. Cluster discovered articles
+    5. Generate strategy per topic
+    6. Synthesize overall win strategy
     """
     prep = crud.get_preparation(db, prep_id)
     if not prep:
         raise HTTPException(status_code=404, detail="Preparation not found")
 
-    opponent_names = [op["name"] for op in prep.get("opponents", [])]
+    main_topic = prep.get("topic", "")
+    user_position = prep.get("user_position", "")
     debate_context = prep.get("debate_context", "")
-    strategy_topics = prep.get("strategy_topics", [])
+    opponent_names = [op["name"] for op in prep.get("opponents", [])]
+    predefined_topics = prep.get("strategy_topics", [])
 
-    if not strategy_topics:
-        raise HTTPException(status_code=400, detail="No strategy topics to generate. Add topics first.")
+    logger.info(f"🚀 Starting pipeline for '{prep.get('title')}' — "
+                f"{len(predefined_topics)} predefined topics, {len(opponent_names)} opponents")
 
-    print(f"🚀 Generating strategy for '{prep.get('title')}' ({len(strategy_topics)} topics)...")
+    # ── PARALLEL PHASE 1: Enrich + Predefined Search + Query Generation ──
 
-    updated_topics = []
-    for st in strategy_topics:
-        topic_title = st.get("title", "")
-        topic_desc = st.get("description", "")
-        topic_stance = st.get("stance", "")
+    # Step 1: Enrich each opponent
+    async def _enrich_all():
+        results = {}
+        for op in prep.get("opponents", []):
+            try:
+                enriched = await enrich_opponent(op["name"])
+                results[op["name"]] = enriched
+                # Persist enrichment to DB
+                db_opp = db.query(models.Opponent).filter(models.Opponent.id == op["id"]).first()
+                if db_opp:
+                    if enriched.get("description"):
+                        db_opp.description = enriched["description"]
+                    if enriched.get("organization"):
+                        db_opp.organization = enriched["organization"]
+                    if enriched.get("known_positions"):
+                        db_opp.known_positions = enriched["known_positions"]
+                    if enriched.get("debate_style"):
+                        db_opp.debate_style = enriched["debate_style"]
+            except Exception as e:
+                logger.error(f"⚠️ Opponent enrichment failed for {op['name']}: {e}")
+                results[op["name"]] = {}
+        db.commit()
+        return results
 
-        print(f"  📰 Searching news for topic: {topic_title}")
-        articles = await search_news_for_topic(topic_title, opponent_names, debate_context)
+    # Step 2: Search articles for predefined topics
+    async def _search_predefined():
+        results = {}
+        for st in predefined_topics:
+            try:
+                articles = await search_news_for_topic(
+                    st.get("title", ""),
+                    opponent_names,
+                    debate_context,
+                )
+                results[st["id"]] = articles
+                logger.info(f"📰 Found {len(articles)} articles for predefined topic: {st.get('title')}")
+            except Exception as e:
+                logger.error(f"⚠️ Article search failed for topic '{st.get('title')}': {e}")
+                results[st["id"]] = []
+        return results
 
-        print(f"  🤖 Generating strategy for topic: {topic_title} ({len(articles)} articles)")
-        llm_result = await generate_topic_strategy(
-            topic_title=topic_title,
-            topic_description=topic_desc,
-            topic_stance=topic_stance,
-            opponent_names=opponent_names,
-            debate_context=debate_context,
-            articles=articles,
-        )
+    # Step 3a+3b: Generate discovery queries
+    async def _generate_queries():
+        predefined = _build_predefined_queries(main_topic, opponent_names, debate_context)
+        try:
+            llm_queries = await generate_discovery_queries(
+                main_topic, user_position, opponent_names, debate_context
+            )
+        except Exception as e:
+            logger.error(f"⚠️ LLM query generation failed: {e}")
+            llm_queries = []
+        all_queries = predefined + llm_queries
+        logger.info(f"🔎 Total discovery queries: {len(all_queries)} "
+                     f"({len(predefined)} predefined + {len(llm_queries)} LLM-generated)")
+        return all_queries
 
-        # Build the update payload for this topic
+    # Run Phase 1 in parallel
+    enrichment_results, predefined_articles, discovery_queries = await asyncio.gather(
+        _enrich_all(),
+        _search_predefined(),
+        _generate_queries(),
+    )
+
+    # Build enriched opponent profiles for Step 5
+    opponent_profiles = []
+    for op in prep.get("opponents", []):
+        enriched = enrichment_results.get(op["name"], {})
+        opponent_profiles.append({
+            "name": op["name"],
+            "description": enriched.get("description") or op.get("description"),
+            "organization": enriched.get("organization") or op.get("organization"),
+            "known_positions": enriched.get("known_positions") or op.get("known_positions"),
+            "debate_style": enriched.get("debate_style") or op.get("debate_style"),
+        })
+
+    # Collect article IDs already assigned to predefined topics
+    predefined_article_ids = set()
+    for articles in predefined_articles.values():
+        for a in articles:
+            if a.get("article_id"):
+                predefined_article_ids.add(a["article_id"])
+
+    # ── Step 3c: Discovery Search Execution ──
+
+    all_discovered_articles = {}
+    for query in discovery_queries:
+        try:
+            logger.info(f"🔎 Running discovery query: {query}")
+            articles = await search_news_for_topic(query, [], "")
+            for a in articles:
+                aid = a.get("article_id")
+                if aid and aid not in predefined_article_ids and aid not in all_discovered_articles:
+                    all_discovered_articles[aid] = a
+        except Exception as e:
+            logger.error(f"⚠️ Discovery search failed for query '{query}': {e}")
+
+    unique_discovered = list(all_discovered_articles.values())
+    logger.info(f"📰 Found {len(unique_discovered)} unique discovery articles "
+                f"({len(predefined_article_ids)} excluded from predefined topics)")
+
+    # ── Step 4: Article Clustering ──
+
+    predefined_topic_names = [st.get("title", "") for st in predefined_topics if st.get("title")]
+    clusters: dict[str, list[str]] = {}
+    if unique_discovered:
+        try:
+            clusters = await cluster_articles(unique_discovered, predefined_topic_names)
+        except Exception as e:
+            logger.error(f"⚠️ Article clustering failed: {e}")
+
+    logger.info(f"🗂️ Created {len(clusters)} discovered topic clusters")
+
+    # ── Step 5: Strategy Generation per Topic ──
+
+    # Build updated predefined topics with articles + strategy
+    updated_topics: list[schemas.StrategyTopicCreate] = []
+
+    for st in predefined_topics:
+        articles = predefined_articles.get(st["id"], [])
+        try:
+            llm_result = await generate_topic_strategy(
+                topic_title=st.get("title", ""),
+                topic_description=st.get("description", ""),
+                topic_stance=st.get("stance", ""),
+                opponent_names=opponent_names,
+                opponent_profiles=opponent_profiles,
+                debate_context=debate_context,
+                articles=articles,
+            )
+        except Exception as e:
+            logger.error(f"⚠️ Strategy generation failed for topic '{st.get('title')}': {e}")
+            llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
+
         article_ids = [a["article_id"] for a in articles if a.get("article_id")]
         updated_topics.append(schemas.StrategyTopicCreate(
-            title=topic_title,
-            description=topic_desc,
-            stance=topic_stance,
+            title=st.get("title", ""),
+            description=st.get("description", ""),
+            stance=st.get("stance", ""),
+            source="user",
             article_ids=article_ids,
             sneaky_questions=llm_result.get("sneaky_questions", []),
             arguments=llm_result.get("arguments", []),
             why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),
         ))
 
-    # Update the preparation with generated content
+    # Built discovered topics from clusters
+    article_lookup = {a["article_id"]: a for a in unique_discovered}
+    for cluster_name, cluster_article_ids in clusters.items():
+        cluster_arts = [article_lookup[aid] for aid in cluster_article_ids if aid in article_lookup]
+        try:
+            llm_result = await generate_topic_strategy(
+                topic_title=cluster_name,
+                topic_description=f"Discovered topic based on {len(cluster_arts)} articles",
+                topic_stance=user_position,
+                opponent_names=opponent_names,
+                opponent_profiles=opponent_profiles,
+                debate_context=debate_context,
+                articles=cluster_arts,
+            )
+        except Exception as e:
+            logger.error(f"⚠️ Strategy generation failed for discovered topic '{cluster_name}': {e}")
+            llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
+
+        updated_topics.append(schemas.StrategyTopicCreate(
+            title=cluster_name,
+            description=f"Discovered topic based on {len(cluster_arts)} articles",
+            stance=user_position,
+            source="discovered",
+            article_ids=cluster_article_ids,
+            sneaky_questions=llm_result.get("sneaky_questions", []),
+            arguments=llm_result.get("arguments", []),
+            why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),
+        ))
+
+    # ── Step 6: Win Strategy Synthesis ──
+
+    strategy_dicts = [
+        {
+            "title": t.title,
+            "arguments": t.arguments,
+            "why_bad_for_opponent": t.why_bad_for_opponent,
+        }
+        for t in updated_topics
+    ]
+
+    try:
+        win_result = await generate_win_strategy(
+            main_topic=main_topic,
+            user_position=user_position,
+            debate_context=debate_context,
+            opponent_profiles=opponent_profiles,
+            strategy_topics=strategy_dicts,
+        )
+    except Exception as e:
+        logger.error(f"⚠️ Win strategy synthesis failed: {e}")
+        win_result = {"win_strategy": "", "key_arguments": []}
+
+    # ── Save everything ──
+
     update_data = schemas.PreparationUpdate(
         status=schemas.PreparationStatus.ready,
+        win_strategy=win_result.get("win_strategy", ""),
+        key_arguments=win_result.get("key_arguments", []),
         strategy_topics=updated_topics,
     )
     result = crud.update_preparation(db, prep_id, update_data)
     if not result:
         raise HTTPException(status_code=500, detail="Failed to update preparation")
 
-    print(f"✅ Strategy generation complete for '{prep.get('title')}'")
+    user_count = sum(1 for t in updated_topics if t.source == "user")
+    discovered_count = sum(1 for t in updated_topics if t.source == "discovered")
+    logger.info(f"✅ Pipeline complete for '{prep.get('title')}' — "
+                f"{len(updated_topics)} topics ({user_count} user, {discovered_count} discovered)")
+
     return schemas.PreparationResponse.model_validate(result).model_dump(mode="json", by_alias=True)
 
 
@@ -159,4 +350,3 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
-

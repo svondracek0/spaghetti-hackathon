@@ -45,6 +45,7 @@ class Opponent(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
     organization = Column(String, nullable=True)
     known_positions = Column(Text, nullable=True)
     debate_style = Column(Text, nullable=True)
@@ -60,6 +61,7 @@ class StrategyTopic(Base):
     title = Column(String, default="")
     description = Column(Text, default="")
     stance = Column(Text, default="")
+    source = Column(String, default="user")  # 'user' or 'discovered'
     article_ids_json = Column(Text, default="[]")  # JSON array of strings
     sneaky_questions_json = Column(Text, default="[]")  # JSON array of strings
     arguments_json = Column(Text, default="[]")  # JSON array of strings

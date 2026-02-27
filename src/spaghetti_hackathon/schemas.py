@@ -27,6 +27,7 @@ class PreparationStatus(str, Enum):
 
 class OpponentBase(CamelModel):
     name: str
+    description: Optional[str] = None
     organization: Optional[str] = None
     known_positions: Optional[str] = None
     debate_style: Optional[str] = None
@@ -47,6 +48,7 @@ class StrategyTopicBase(CamelModel):
     title: str = ""
     description: str = ""
     stance: str = ""
+    source: str = "user"
     article_ids: list[str] = []
     sneaky_questions: list[str] = []
     arguments: list[str] = []

@@ -1,11 +1,14 @@
 import os
+import logging
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 NEWSMATICS_API_KEY = os.getenv("NEWSMATICS_API_KEY")
-BASE_URL = "https://api.newsindex.biz/v1"
+BASE_URL = "https://www.newsmatics.com/news-index/api/v1"
 
 
 async def search_news_for_topic(
@@ -15,15 +18,20 @@ async def search_news_for_topic(
 ) -> list[dict]:
     """
     Search Newsmatics for articles relevant to a single strategy topic.
-    Returns a list of dicts with keys: title, content, url, article_id.
+    Uses hybrid search (combined semantic + full-text).
+    Returns a list of dicts with keys: article_id, title, content, url, publisher.
     """
     if not NEWSMATICS_API_KEY:
-        print("⚠️ NEWSMATICS_API_KEY not set — skipping news search.")
+        logger.warning("⚠️ NEWSMATICS_API_KEY not set — skipping news search.")
         return []
 
-    # Build a focused query for this specific topic + opponents
-    opponents_str = ", ".join(opponent_names) if opponent_names else ""
-    query = f"{topic_title} {opponents_str} {context}".strip()
+    # Build a focused query combining topic + opponents + context
+    parts = [topic_title]
+    if opponent_names:
+        parts.append(" | ".join(opponent_names))
+    if context:
+        parts.append(context)
+    query = " ".join(parts).strip()
 
     params = {
         "filter[query]": query,
@@ -48,24 +56,30 @@ async def search_news_for_topic(
             response.raise_for_status()
             data = response.json()
 
-            articles = data.get("data", [])
+            articles = data.get("articles", [])
             formatted = []
             for article in articles:
-                attrs = article.get("attributes", {})
-                article_id = article.get("id", "")
-                title = attrs.get("title", "No Title")
-                text = attrs.get("text", attrs.get("snippet", "No Content"))
-                url = attrs.get("url", "")
+                article_id = str(article.get("id", ""))
+                title = article.get("title", "No Title")
+                # Prefer full text if available, fall back to abstract
+                text = article.get("text") or article.get("abstract", "No Content")
+                url = article.get("url", "")
+                publisher = article.get("publisher", "")
+
                 formatted.append({
-                    "article_id": str(article_id),
+                    "article_id": article_id,
                     "title": title,
                     "content": text[:800] if len(text) > 800 else text,
                     "url": url,
+                    "publisher": publisher,
                 })
+
+            logger.info(f"📰 Newsmatics: found {len(formatted)} articles for query: {query[:80]}...")
             return formatted
 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ Newsmatics HTTP error for '{topic_title}': {e.response.status_code} — {e.response.text[:200]}")
+            return []
         except Exception as e:
-            import traceback
-            print(f"❌ Newsmatics search error for topic '{topic_title}': {e}")
-            print(traceback.format_exc())
+            logger.error(f"❌ Newsmatics search error for '{topic_title}': {e}")
             return []

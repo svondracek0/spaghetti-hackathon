@@ -5,6 +5,7 @@ export interface StrategyTopic {
     title: string
     description: string
     stance: string
+    source: 'user' | 'discovered'
     articleIds: string[]
     sneakyQuestions: string[]
     arguments: string[]
@@ -21,6 +22,7 @@ export interface StrategyTopicInput {
 export interface Opponent {
     id: string
     name: string
+    description?: string
     organization?: string
     knownPositions?: string
     debateStyle?: string

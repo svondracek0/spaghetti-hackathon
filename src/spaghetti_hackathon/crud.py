@@ -20,6 +20,8 @@ def _get_or_create_opponent(db: Session, opp_data: schemas.OpponentCreate) -> mo
 
     if existing:
         # Update mutable fields if provided
+        if opp_data.description is not None:
+            existing.description = opp_data.description
         if opp_data.organization is not None:
             existing.organization = opp_data.organization
         if opp_data.known_positions is not None:
@@ -30,6 +32,7 @@ def _get_or_create_opponent(db: Session, opp_data: schemas.OpponentCreate) -> mo
 
     opponent = models.Opponent(
         name=opp_data.name,
+        description=opp_data.description,
         organization=opp_data.organization,
         known_positions=opp_data.known_positions,
         debate_style=opp_data.debate_style,
@@ -57,6 +60,7 @@ def get_all_opponents(db: Session) -> list[dict]:
         result.append({
             "id": opp.id,
             "name": opp.name,
+            "description": opp.description,
             "organization": opp.organization,
             "known_positions": opp.known_positions,
             "debate_style": opp.debate_style,
@@ -73,6 +77,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
         opponents.append({
             "id": opp.id,
             "name": opp.name,
+            "description": opp.description,
             "organization": opp.organization,
             "known_positions": opp.known_positions,
             "debate_style": opp.debate_style,
@@ -86,6 +91,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
             "title": st.title,
             "description": st.description,
             "stance": st.stance,
+            "source": st.source,
             "article_ids": _deserialize_json(st.article_ids_json),
             "sneaky_questions": _deserialize_json(st.sneaky_questions_json),
             "arguments": _deserialize_json(st.arguments_json),
@@ -149,6 +155,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
             title=st_data.title,
             description=st_data.description,
             stance=st_data.stance,
+            source=st_data.source,
             article_ids_json=_serialize_json(st_data.article_ids),
             sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
             arguments_json=_serialize_json(st_data.arguments),
@@ -208,6 +215,7 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
                 title=st_data.title,
                 description=st_data.description,
                 stance=st_data.stance,
+                source=st_data.source,
                 article_ids_json=_serialize_json(st_data.article_ids),
                 sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
                 arguments_json=_serialize_json(st_data.arguments),

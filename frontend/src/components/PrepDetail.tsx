@@ -66,37 +66,37 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
             </div>
 
             {/* Generate Strategy Button */}
-            {preparation.strategyTopics.length > 0 && (
-                <Card className="border-primary/20 bg-primary/5">
-                    <CardContent className="flex items-center justify-between py-4">
-                        <div>
-                            <p className="font-medium text-sm">
-                                {preparation.status === 'Ready'
-                                    ? '✅ Strategy generated — click to regenerate'
-                                    : `🎯 ${preparation.strategyTopics.length} topic(s) ready for AI analysis`}
-                            </p>
-                            {error && <p className="text-xs text-destructive mt-1">{error}</p>}
-                        </div>
-                        <Button
-                            onClick={handleGenerate}
-                            disabled={generating}
-                            size="sm"
-                        >
-                            {generating ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="h-4 w-4 mr-1.5" />
-                                    Generate Strategy
-                                </>
-                            )}
-                        </Button>
-                    </CardContent>
-                </Card>
-            )}
+            <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="flex items-center justify-between py-4">
+                    <div>
+                        <p className="font-medium text-sm">
+                            {preparation.status === 'Ready'
+                                ? '✅ Strategy generated — click to regenerate'
+                                : preparation.strategyTopics.length > 0
+                                    ? `🎯 ${preparation.strategyTopics.length} topic(s) ready for AI analysis`
+                                    : '🔍 Generate strategy — AI will discover topics from news'}
+                        </p>
+                        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+                    </div>
+                    <Button
+                        onClick={handleGenerate}
+                        disabled={generating}
+                        size="sm"
+                    >
+                        {generating ? (
+                            <>
+                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="h-4 w-4 mr-1.5" />
+                                Generate Strategy
+                            </>
+                        )}
+                    </Button>
+                </CardContent>
+            </Card>
 
             {/* Debate Context */}
             {preparation.debateContext && (
@@ -159,8 +159,11 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                                                 </Badge>
                                             )}
                                         </div>
+                                        {op.description && (
+                                            <p className="text-xs text-muted-foreground mt-1">{op.description}</p>
+                                        )}
                                         {op.knownPositions && (
-                                            <p className="text-xs text-muted-foreground mt-1">{op.knownPositions}</p>
+                                            <p className="text-xs text-muted-foreground mt-0.5 italic">{op.knownPositions}</p>
                                         )}
                                     </div>
                                 </div>
@@ -207,6 +210,11 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                         <CardTitle className="text-sm font-medium flex items-center gap-1.5">
                             <FileText className="h-3.5 w-3.5 text-primary" />
                             {st.title || `Strategy Topic ${idx + 1}`}
+                            {st.source === 'discovered' && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-500/15 text-yellow-500 ml-1">
+                                    ✨ Discovered
+                                </Badge>
+                            )}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
