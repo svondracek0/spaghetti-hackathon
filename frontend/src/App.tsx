@@ -126,6 +126,9 @@ function App() {
               preparation={selectedPrep}
               onEdit={() => setView('edit')}
               onDelete={handleDelete}
+              onUpdate={(updated) => {
+                setPreparations((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+              }}
             />
           ) : null}
         </ScrollArea>

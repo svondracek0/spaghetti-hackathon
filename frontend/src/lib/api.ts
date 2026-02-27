@@ -2,15 +2,25 @@ import type { Preparation, PreparationCreate, PreparationUpdate, Opponent } from
 
 const API_BASE = '/api'
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE}${url}`, {
-        headers: { 'Content-Type': 'application/json' },
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const response = await fetch(`${API_BASE}${path}`, {
         ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
     })
-    if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`)
+
+    if (response.status === 204) {
+        return null as T
     }
-    return res.json() as Promise<T>
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Network error' }))
+        throw new Error(error.detail || 'An error occurred')
+    }
+
+    return response.json()
 }
 
 export const api = {
@@ -35,6 +45,12 @@ export const api = {
 
     deletePreparation: (id: string) =>
         request<void>(`/preparations/${id}`, { method: 'DELETE' }),
+
+    // Strategy generation
+    generateStrategy: (id: string) =>
+        request<Preparation>(`/preparations/${id}/generate`, {
+            method: 'POST',
+        }),
 
     // Opponents (for autocomplete)
     getOpponents: () =>

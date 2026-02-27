@@ -1,18 +1,37 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from './StatusBadge'
+import { api } from '@/lib/api'
 import type { Preparation } from '@/types'
-import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText } from 'lucide-react'
+import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2 } from 'lucide-react'
 
 interface PrepDetailProps {
     preparation: Preparation
     onEdit: () => void
     onDelete: () => void
+    onUpdate: (updated: Preparation) => void
 }
 
-export function PrepDetail({ preparation, onEdit, onDelete }: PrepDetailProps) {
+export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDetailProps) {
+    const [generating, setGenerating] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    async function handleGenerate() {
+        setGenerating(true)
+        setError(null)
+        try {
+            const updated = await api.generateStrategy(preparation.id)
+            onUpdate(updated)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Generation failed')
+        } finally {
+            setGenerating(false)
+        }
+    }
+
     return (
         <div className="max-w-3xl mx-auto space-y-6">
             {/* Header */}
@@ -45,6 +64,39 @@ export function PrepDetail({ preparation, onEdit, onDelete }: PrepDetailProps) {
                     </Button>
                 </div>
             </div>
+
+            {/* Generate Strategy Button */}
+            {preparation.strategyTopics.length > 0 && (
+                <Card className="border-primary/20 bg-primary/5">
+                    <CardContent className="flex items-center justify-between py-4">
+                        <div>
+                            <p className="font-medium text-sm">
+                                {preparation.status === 'Ready'
+                                    ? '✅ Strategy generated — click to regenerate'
+                                    : `🎯 ${preparation.strategyTopics.length} topic(s) ready for AI analysis`}
+                            </p>
+                            {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+                        </div>
+                        <Button
+                            onClick={handleGenerate}
+                            disabled={generating}
+                            size="sm"
+                        >
+                            {generating ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="h-4 w-4 mr-1.5" />
+                                    Generate Strategy
+                                </>
+                            )}
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Debate Context */}
             {preparation.debateContext && (

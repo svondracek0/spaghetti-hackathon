@@ -26,7 +26,7 @@ dependencies = [
     "pydantic",
     "python-dotenv",
     "httpx",
-]]
+]
 
 [project.urls]
 "Homepage" = "https://github.com/svondracek0/spaghetti-hackathon"
