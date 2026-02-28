@@ -2,31 +2,19 @@
     "version": 2,
     "buildCommand": "cd frontend && npm install && npm run build",
     "outputDirectory": "frontend/dist",
-    "builds": [
+    "rewrites": [
         {
-            "src": "api/index.py",
-            "use": "@vercel/python",
-            "config": {
-                "maxDuration": 60
-            }
+            "source": "/api/(.*)",
+            "destination": "/api/index.py"
         },
         {
-            "src": "frontend/dist/**",
-            "use": "@vercel/static"
+            "source": "/((?!api/).*)",
+            "destination": "/index.html"
         }
     ],
-    "routes": [
-        {
-            "src": "/api/(.*)",
-            "dest": "/api/index.py"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/frontend/dist/$1"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/frontend/dist/index.html"
+    "functions": {
+        "api/*.py": {
+            "maxDuration": 60
         }
-    ]
+    }
 }
