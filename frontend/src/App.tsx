@@ -6,7 +6,7 @@ import { SharedView } from '@/components/SharedView'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import type { Preparation, PreparationCreate, Opponent } from '@/types'
-import { Swords } from 'lucide-react'
+import logo from '@/assets/daemonsthenes.png'
 
 type View = 'empty' | 'detail' | 'create' | 'edit'
 
@@ -116,14 +116,12 @@ function MainApp() {
             </div>
           ) : view === 'empty' ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                <Swords className="h-8 w-8 text-primary" />
-              </div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">
-                No preparation selected
+              <img src={logo} alt="Daemonsthenes Logo" className="h-48 w-48 object-contain mb-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-700" />
+              <h2 className="text-3xl font-extralight tracking-[0.2em] text-foreground mb-4">
+                DAEMONSTHENES
               </h2>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Select a preparation from the sidebar or create a new one to get started.
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground/40 max-w-sm">
+                Strategic Intelligence for the Modern Debater
               </p>
             </div>
           ) : view === 'create' ? (

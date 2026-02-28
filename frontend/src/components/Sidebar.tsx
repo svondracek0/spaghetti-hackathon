@@ -2,8 +2,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { PrepCard } from './PrepCard'
-import { Plus, Swords } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { Preparation } from '@/types'
+import logo from '@/assets/daemonsthenes.png'
 
 interface SidebarProps {
     preparations: Preparation[]
@@ -17,16 +18,14 @@ export function Sidebar({ preparations, selectedId, onSelect, onNewPrep }: Sideb
         <aside className="w-80 h-screen flex flex-col bg-sidebar-background border-r border-sidebar-border">
             {/* Header */}
             <div className="p-5 pb-4">
-                <div className="flex items-center gap-2.5 mb-1">
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Swords className="h-4 w-4 text-primary" />
-                    </div>
-                    <h1 className="text-lg font-bold tracking-tight text-foreground">
-                        Debate<span className="text-primary">Prep</span>
+                <div className="flex items-center gap-3 mb-1">
+                    <img src={logo} alt="Daemonsthenes Logo" className="h-10 w-10 object-contain" />
+                    <h1 className="text-xl font-bold tracking-tighter text-foreground uppercase">
+                        Daemonsthenes
                     </h1>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 ml-[42px]">
-                    Master every argument
+                <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground/40 mt-2 ml-1">
+                    Strategic Intelligence
                 </p>
             </div>
 
