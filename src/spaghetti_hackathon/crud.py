@@ -111,6 +111,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
         "user_position": prep.user_position,
         "win_strategy": prep.win_strategy,
         "key_arguments": _deserialize_json(prep.key_arguments_json),
+        "selected_timeframes": _deserialize_json(prep.selected_timeframes_json),
         "opponents": opponents,
         "strategy_topics": strategy_topics,
     }
@@ -139,6 +140,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
         user_position=data.user_position,
         win_strategy=data.win_strategy,
         key_arguments_json=_serialize_json(data.key_arguments),
+        selected_timeframes_json=_serialize_json([tf.model_dump(by_alias=False) for tf in data.selected_timeframes] if data.selected_timeframes is not None else []),
     )
     db.add(prep)
     db.flush()
@@ -192,6 +194,8 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
         prep.win_strategy = data.win_strategy
     if data.key_arguments is not None:
         prep.key_arguments_json = _serialize_json(data.key_arguments)
+    if data.selected_timeframes is not None:
+        prep.selected_timeframes_json = _serialize_json([tf.model_dump(by_alias=False) for tf in data.selected_timeframes])
 
     prep.updated_at = datetime.now(timezone.utc)
 

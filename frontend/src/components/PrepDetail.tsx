@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from './StatusBadge'
 import { api } from '@/lib/api'
+import { TimelineExplorer } from './TimelineExplorer'
 import type { Preparation } from '@/types'
-import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2 } from 'lucide-react'
+import { Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2 } from 'lucide-react'
 
 interface PrepDetailProps {
     preparation: Preparation
@@ -42,17 +43,6 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                             {preparation.title || 'Untitled Preparation'}
                         </h1>
                         <StatusBadge status={preparation.status} />
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        {preparation.debateDate && (
-                            <span className="flex items-center gap-1.5">
-                                <Calendar className="h-3.5 w-3.5" />
-                                {new Date(preparation.debateDate).toLocaleDateString()}
-                            </span>
-                        )}
-                        {preparation.debateFormat && (
-                            <Badge variant="outline" className="text-xs">{preparation.debateFormat}</Badge>
-                        )}
                     </div>
                 </div>
                 <div className="flex gap-2">
@@ -98,18 +88,6 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                 </CardContent>
             </Card>
 
-            {/* Debate Context */}
-            {preparation.debateContext && (
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground font-medium">Context</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-sm whitespace-pre-wrap">{preparation.debateContext}</p>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* Topic & Position */}
             <Card>
                 <CardHeader className="pb-2">
@@ -127,6 +105,20 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                         <div>
                             <span className="text-xs text-muted-foreground uppercase tracking-wider">Your position</span>
                             <p className="text-sm mt-0.5 whitespace-pre-wrap">{preparation.userPosition}</p>
+                        </div>
+                    )}
+
+                    {preparation.selectedTimeframes && preparation.selectedTimeframes.length > 0 && (
+                        <div className="pt-4 border-t mt-4 -mx-6 px-6 pb-2">
+                            <span className="text-xs text-muted-foreground uppercase tracking-wider mb-3 block">Research Relevance over Time</span>
+                            <TimelineExplorer
+                                readOnly
+                                query={[
+                                    preparation.topic ? `"${preparation.topic}"` : '',
+                                    preparation.opponents.length > 0 ? `"${preparation.opponents.map(o => o.name).join(' ')}"` : ''
+                                ].filter(Boolean).join(' & ')}
+                                selectedTimeframes={preparation.selectedTimeframes || []}
+                            />
                         </div>
                     )}
                 </CardContent>

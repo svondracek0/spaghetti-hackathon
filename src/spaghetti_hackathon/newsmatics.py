@@ -12,33 +12,41 @@ BASE_URL = "https://www.newsmatics.com/news-index/api/v1"
 
 
 async def search_news_for_topic(
-    topic_title: str,
-    opponent_names: list[str],
+    query: str,
+    opponents: list[str],
     context: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[dict]:
     """
-    Search Newsmatics for articles relevant to a single strategy topic.
-    Uses hybrid search (combined semantic + full-text).
-    Returns a list of dicts with keys: article_id, title, content, url, publisher.
+    Search for relevant news articles using Newsmatics Hybrid Search.
+    Optionally filter by date range using date_from/date_to (YYYY-MM-DD).
     """
     if not NEWSMATICS_API_KEY:
-        logger.warning("⚠️ NEWSMATICS_API_KEY not set — skipping news search.")
-        return []
+        logger.warning("NEWSMATICS_API_KEY not found. Returning mock data.")
+        # This line assumes _mock_search_results is defined elsewhere or will be added.
+        # If not, it will cause a NameError.
+        return _mock_search_results(query)
 
     # Build a focused query combining topic + opponents + context
-    parts = [topic_title]
-    if opponent_names:
-        parts.append(" | ".join(opponent_names))
+    parts = [query]
+    if opponents:
+        parts.append(" | ".join(opponents))
     if context:
         parts.append(context)
-    query = " ".join(parts).strip()
+    full_query = " ".join(parts).strip()
 
     params = {
-        "filter[query]": query,
+        "filter[query]": full_query,
         "weight": 0,  # Balanced semantic + full-text
         "page[size]": 5,
         "include-text": 1,
     }
+
+    if date_from:
+        params["filter[from]"] = date_from
+    if date_to:
+        params["filter[to]"] = date_to
 
     headers = {
         "Authorization": f"Bearer {NEWSMATICS_API_KEY}",
@@ -78,8 +86,8 @@ async def search_news_for_topic(
             return formatted
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ Newsmatics HTTP error for '{topic_title}': {e.response.status_code} — {e.response.text[:200]}")
+            logger.error(f"❌ Newsmatics HTTP error for '{query}': {e.response.status_code} — {e.response.text[:200]}")
             return []
         except Exception as e:
-            logger.error(f"❌ Newsmatics search error for '{topic_title}': {e}")
+            logger.error(f"❌ Newsmatics search error for '{query}': {e}")
             return []

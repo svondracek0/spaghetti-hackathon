@@ -34,6 +34,7 @@ class Preparation(Base):
     # Strategy
     win_strategy = Column(Text, default="")
     key_arguments_json = Column(Text, default="[]")  # JSON array of strings
+    selected_timeframes_json = Column(Text, default="[]")  # JSON array of dicts
 
     # Relationships
     opponents = relationship("Opponent", secondary=preparation_opponents, back_populates="preparations")

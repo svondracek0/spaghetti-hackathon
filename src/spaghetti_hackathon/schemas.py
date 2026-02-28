@@ -63,6 +63,14 @@ class StrategyTopicResponse(StrategyTopicBase):
     id: str
 
 
+# --- Timeframe ---
+
+class SelectedTimeframe(CamelModel):
+    from_: str = ""
+    to: str = ""
+    label: Optional[str] = None
+
+
 # --- Preparation ---
 
 class PreparationBase(CamelModel):
@@ -75,6 +83,7 @@ class PreparationBase(CamelModel):
     user_position: str = ""
     win_strategy: str = ""
     key_arguments: list[str] = []
+    selected_timeframes: list[SelectedTimeframe] = []
 
 
 class PreparationCreate(PreparationBase):
@@ -92,6 +101,7 @@ class PreparationUpdate(CamelModel):
     user_position: Optional[str] = None
     win_strategy: Optional[str] = None
     key_arguments: Optional[list[str]] = None
+    selected_timeframes: Optional[list[SelectedTimeframe]] = None
     opponents: Optional[list[OpponentCreate]] = None
     strategy_topics: Optional[list[StrategyTopicCreate]] = None
 

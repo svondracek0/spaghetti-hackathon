@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from .llm import (
     generate_topic_strategy,
     generate_win_strategy,
 )
+from .timeline import get_relevant_timeframes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -155,12 +156,21 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # Step 2: Search articles for predefined topics
     async def _search_predefined():
         results = {}
+        tf_from, tf_to = None, None
+        selected_timeframes = prep.get("selected_timeframes", [])
+        if selected_timeframes and len(selected_timeframes) > 0:
+            tf_from = selected_timeframes[0].get("from")
+            tf_to = selected_timeframes[0].get("to")
+            logger.info(f"📅 Applying timeframe filter: {tf_from} to {tf_to}")
+
         for st in predefined_topics:
             try:
                 articles = await search_news_for_topic(
                     st.get("title", ""),
                     opponent_names,
                     debate_context,
+                    date_from=tf_from,
+                    date_to=tf_to,
                 )
                 results[st["id"]] = articles
                 logger.info(f"📰 Found {len(articles)} articles for predefined topic: {st.get('title')}")
@@ -213,10 +223,16 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # ── Step 3c: Discovery Search Execution ──
 
     all_discovered_articles = {}
+    tf_from, tf_to = None, None
+    selected_timeframes = prep.get("selected_timeframes", [])
+    if selected_timeframes and len(selected_timeframes) > 0:
+        tf_from = selected_timeframes[0].get("from")
+        tf_to = selected_timeframes[0].get("to")
+
     for query in discovery_queries:
         try:
             logger.info(f"🔎 Running discovery query: {query}")
-            articles = await search_news_for_topic(query, [], "")
+            articles = await search_news_for_topic(query, [], "", date_from=tf_from, date_to=tf_to)
             for a in articles:
                 aid = a.get("article_id")
                 if aid and aid not in predefined_article_ids and aid not in all_discovered_articles:
@@ -344,6 +360,13 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
 
     return schemas.PreparationResponse.model_validate(result).model_dump(mode="json", by_alias=True)
 
+
+# --- Timeline ---
+@app.get("/api/relevant-timeframes")
+async def relevant_timeframes(query: str = Query(..., description="Search query for article counts")):
+    """Get article volume distribution and suggested peak timeframes for a query."""
+    result = await get_relevant_timeframes(query)
+    return result
 
 # --- Health ---
 
