@@ -257,7 +257,7 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                                 <ul className="mt-1.5 space-y-1">
                                     {st.sneakyQuestions.map((q, qIdx) => (
                                         <li key={qIdx} className="text-sm text-foreground/90 pl-2 border-l-2 border-preparing/30">
-                                            {q}
+                                            <CitedText text={q} articles={st.articles || []} />
                                         </li>
                                     ))}
                                 </ul>
