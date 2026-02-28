@@ -42,6 +42,15 @@ class OpponentResponse(OpponentBase):
     previous_encounters: int = 0
 
 
+# --- Article Reference ---
+
+class ArticleRef(CamelModel):
+    article_id: str
+    title: str = ""
+    url: str = ""
+    publisher: str = ""
+
+
 # --- Strategy Topic ---
 
 class StrategyTopicBase(CamelModel):
@@ -50,6 +59,7 @@ class StrategyTopicBase(CamelModel):
     stance: str = ""
     source: str = "user"
     article_ids: list[str] = []
+    articles: list[ArticleRef] = []
     sneaky_questions: list[str] = []
     arguments: list[str] = []
     why_bad_for_opponent: str = ""

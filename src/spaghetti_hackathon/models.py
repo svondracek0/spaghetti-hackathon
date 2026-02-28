@@ -63,6 +63,7 @@ class StrategyTopic(Base):
     stance = Column(Text, default="")
     source = Column(String, default="user")  # 'user' or 'discovered'
     article_ids_json = Column(Text, default="[]")  # JSON array of strings
+    articles_json = Column(Text, default="[]")  # JSON array of {article_id, title, url, publisher}
     sneaky_questions_json = Column(Text, default="[]")  # JSON array of strings
     arguments_json = Column(Text, default="[]")  # JSON array of strings
     why_bad_for_opponent = Column(Text, default="")
