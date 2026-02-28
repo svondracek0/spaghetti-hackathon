@@ -432,27 +432,34 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # Step 2: Search articles for predefined topics
     async def _search_predefined():
         results = {}
-        tf_from, tf_to = None, None
         selected_timeframes = prep.get("selected_timeframes", [])
-        if selected_timeframes and len(selected_timeframes) > 0:
-            tf_from = selected_timeframes[0].get("from")
-            tf_to = selected_timeframes[0].get("to")
-            logger.info(f"📅 Applying timeframe filter: {tf_from} to {tf_to}")
+        # Build list of (from, to) pairs — fall back to a single (None, None) if empty
+        tf_ranges = [(tf.get("from"), tf.get("to")) for tf in selected_timeframes] if selected_timeframes else [(None, None)]
+        logger.info(f"📅 Searching across {len(tf_ranges)} timeframe(s) for predefined topics")
 
         for st in predefined_topics:
-            try:
-                articles = await search_news_for_topic(
-                    st.get("title", ""),
-                    opponent_names,
-                    debate_context,
-                    date_from=tf_from,
-                    date_to=tf_to,
-                )
-                results[st["id"]] = articles
-                logger.info(f"📰 Found {len(articles)} articles for predefined topic: {st.get('title')}")
-            except Exception as e:
-                logger.error(f"⚠️ Article search failed for topic '{st.get('title')}': {e}")
-                results[st["id"]] = []
+            seen_ids: set[str] = set()
+            merged: list[dict] = []
+            for tf_from, tf_to in tf_ranges:
+                try:
+                    articles = await search_news_for_topic(
+                        st.get("title", ""),
+                        opponent_names,
+                        debate_context,
+                        date_from=tf_from,
+                        date_to=tf_to,
+                    )
+                    for a in articles:
+                        aid = a.get("article_id")
+                        if aid and aid not in seen_ids:
+                            seen_ids.add(aid)
+                            merged.append(a)
+                        elif not aid:
+                            merged.append(a)
+                except Exception as e:
+                    logger.error(f"⚠️ Article search failed for topic '{st.get('title')}' (tf {tf_from}-{tf_to}): {e}")
+            results[st["id"]] = merged
+            logger.info(f"📰 Found {len(merged)} articles for predefined topic: {st.get('title')}")
         return results
 
     # Step 3a+3b: Generate discovery queries
@@ -499,22 +506,21 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # ── Step 3c: Discovery Search Execution ──
 
     all_discovered_articles = {}
-    tf_from, tf_to = None, None
     selected_timeframes = prep.get("selected_timeframes", [])
-    if selected_timeframes and len(selected_timeframes) > 0:
-        tf_from = selected_timeframes[0].get("from")
-        tf_to = selected_timeframes[0].get("to")
+    tf_ranges = [(tf.get("from"), tf.get("to")) for tf in selected_timeframes] if selected_timeframes else [(None, None)]
+    logger.info(f"📅 Searching across {len(tf_ranges)} timeframe(s) for discovery queries")
 
     for query in discovery_queries:
-        try:
-            logger.info(f"🔎 Running discovery query: {query}")
-            articles = await search_news_for_topic(query, [], "", date_from=tf_from, date_to=tf_to)
-            for a in articles:
-                aid = a.get("article_id")
-                if aid and aid not in predefined_article_ids and aid not in all_discovered_articles:
-                    all_discovered_articles[aid] = a
-        except Exception as e:
-            logger.error(f"⚠️ Discovery search failed for query '{query}': {e}")
+        for tf_from, tf_to in tf_ranges:
+            try:
+                logger.info(f"🔎 Running discovery query: {query} (tf {tf_from}-{tf_to})")
+                articles = await search_news_for_topic(query, [], "", date_from=tf_from, date_to=tf_to)
+                for a in articles:
+                    aid = a.get("article_id")
+                    if aid and aid not in predefined_article_ids and aid not in all_discovered_articles:
+                        all_discovered_articles[aid] = a
+            except Exception as e:
+                logger.error(f"⚠️ Discovery search failed for query '{query}' (tf {tf_from}-{tf_to}): {e}")
 
     unique_discovered = list(all_discovered_articles.values())
     logger.info(f"📰 Found {len(unique_discovered)} unique discovery articles "

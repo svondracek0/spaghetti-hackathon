@@ -1,26 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { api } from '@/lib/api'
-import type { OpponentDetail as OpponentDetailType, NewsTrendPoint, KBStatus, KBGraphData } from '@/types'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { ArrowLeft, Building2, MessageSquare, Target, Swords, TrendingUp, Brain, Search, Loader2, Database, Clock, Trash2 } from 'lucide-react'
+import type { OpponentDetail as OpponentDetailType, KBStatus, KBGraphData } from '@/types'
+import { ArrowLeft, Building2, MessageSquare, Target, Swords, Brain, Search, Loader2, Database, Clock, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { KBGraphViz } from './KBGraphViz'
-
-/** Generate mock trend data for demo purposes */
-function generateMockTrend(name: string): NewsTrendPoint[] {
-    const months = []
-    const now = new Date()
-    for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-        const month = d.toISOString().slice(0, 7)
-        const seed = name.length + i
-        const count = Math.floor(Math.abs(Math.sin(seed * 2.5) * 30) + Math.random() * 10)
-        months.push({ month, count })
-    }
-    return months
-}
+import { TimelineExplorer } from './TimelineExplorer'
 
 export function OpponentDetail({ onDelete }: { onDelete?: () => Promise<void> }) {
     const { id } = useParams<{ id: string }>()
@@ -66,11 +52,6 @@ export function OpponentDetail({ onDelete }: { onDelete?: () => Promise<void> })
         }, 5000) // Poll every 5 seconds
         return () => clearInterval(interval)
     }, [id, kbStatus?.status])
-
-    const trendData = useMemo(() => {
-        if (!opponent) return []
-        return generateMockTrend(opponent.name)
-    }, [opponent])
 
     async function handleKBToggle() {
         if (!id || kbToggling) return
@@ -357,56 +338,12 @@ export function OpponentDetail({ onDelete }: { onDelete?: () => Promise<void> })
                 )}
             </div>
 
-            {/* Article Trend Chart */}
-            <div className="rounded-xl bg-card border border-border p-6">
-                <div className="flex items-center gap-2 mb-5">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold text-foreground">Media Coverage Trend</h2>
-                    <span className="text-xs text-muted-foreground ml-auto">Last 12 months (mock data)</span>
-                </div>
-                <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                            <XAxis
-                                dataKey="month"
-                                tickFormatter={(v) => {
-                                    const [, m] = v.split('-')
-                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                                    return months[parseInt(m) - 1] || v
-                                }}
-                                stroke="#71717a"
-                                fontSize={12}
-                            />
-                            <YAxis stroke="#71717a" fontSize={12} />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: '#111118',
-                                    border: '1px solid #27272a',
-                                    borderRadius: '8px',
-                                    fontSize: '12px',
-                                }}
-                                labelStyle={{ color: '#fafafa' }}
-                                itemStyle={{ color: '#6366f1' }}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="count"
-                                stroke="#6366f1"
-                                fillOpacity={1}
-                                fill="url(#colorCount)"
-                                strokeWidth={2}
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
+            {/* Media Coverage Timeline */}
+            <TimelineExplorer
+                query={opponent.name}
+                selectedTimeframes={[]}
+                readOnly
+            />
 
             {/* Debate History */}
             <div className="rounded-xl bg-card border border-border p-6">

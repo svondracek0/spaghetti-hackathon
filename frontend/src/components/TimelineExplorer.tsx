@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
-import { Loader2, TrendingUp, Calendar, X } from 'lucide-react'
+import { Loader2, TrendingUp, Calendar, X, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { TimeframeData, SelectedTimeframe } from '@/types'
 
@@ -17,28 +18,31 @@ export function TimelineExplorer({ query, selectedTimeframes, onSelect, readOnly
     const [loading, setLoading] = useState(false)
     const [data, setData] = useState<TimeframeData | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const lastAnalyzedQuery = useRef<string | null>(null)
 
-    useEffect(() => {
-        if (!query || query.trim().length < 3) {
-            setData(null)
-            return
+    const analyze = useCallback(async () => {
+        if (!query || query.trim().length < 3 || loading) return
+        lastAnalyzedQuery.current = query
+        setLoading(true)
+        setError(null)
+        try {
+            const result = await api.getRelevantTimeframes(query)
+            setData(result)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Analysis failed')
+        } finally {
+            setLoading(false)
         }
+    }, [query, loading])
 
-        const timer = setTimeout(async () => {
-            setLoading(true)
-            setError(null)
-            try {
-                const result = await api.getRelevantTimeframes(query)
-                setData(result)
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Analysis failed')
-            } finally {
-                setLoading(false)
-            }
-        }, 800)
-
+    // Auto-analyze only in readOnly mode (e.g. opponent page where query is stable)
+    useEffect(() => {
+        if (!readOnly || !query || query.trim().length < 3) return
+        const timer = setTimeout(() => analyze(), 500)
         return () => clearTimeout(timer)
-    }, [query])
+    }, [query, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    const queryChanged = data && lastAnalyzedQuery.current !== query
 
     function toggleTimeframe(tf: SelectedTimeframe) {
         if (readOnly || !onSelect) return
@@ -67,9 +71,31 @@ export function TimelineExplorer({ query, selectedTimeframes, onSelect, readOnly
             </CardHeader>
             <CardContent className="space-y-6">
                 {!readOnly && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground pb-2">
-                        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {loading ? 'Analyzing volume...' : data ? 'Analysis complete.' : 'Waiting for topic string to begin analysis...'}
+                    <div className="flex items-center gap-3">
+                        <Button
+                            type="button"
+                            variant={queryChanged ? 'default' : 'secondary'}
+                            size="sm"
+                            onClick={analyze}
+                            disabled={loading || !query || query.trim().length < 3}
+                            className="shrink-0"
+                        >
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                                <Search className="h-4 w-4 mr-2" />
+                            )}
+                            {loading ? 'Analyzing...' : data ? 'Re-analyze' : 'Analyze Timeframes'}
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                            {!query || query.trim().length < 3
+                                ? 'Add a topic and opponents first'
+                                : queryChanged
+                                    ? 'Topic/opponents changed — click to re-analyze'
+                                    : data
+                                        ? 'Analysis complete'
+                                        : 'Click to analyze article volume over the last 5 years'}
+                        </span>
                     </div>
                 )}
 
@@ -146,6 +172,7 @@ export function TimelineExplorer({ query, selectedTimeframes, onSelect, readOnly
 
                                         return (
                                             <button
+                                                type="button"
                                                 key={idx}
                                                 onClick={() => toggleTimeframe(tf)}
                                                 disabled={readOnly}
@@ -181,6 +208,7 @@ export function TimelineExplorer({ query, selectedTimeframes, onSelect, readOnly
                                     <span className="font-medium">{tf.label || `Since ${tf.from}`}</span>
                                     {!readOnly && (
                                         <button
+                                            type="button"
                                             onClick={() => toggleTimeframe(tf)}
                                             className="p-0.5 hover:bg-background rounded-sm text-muted-foreground hover:text-foreground transition-colors"
                                         >

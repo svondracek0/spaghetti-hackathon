@@ -18,6 +18,9 @@ interface PrepFormProps {
 
 export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormProps) {
     const [title, setTitle] = useState(initial?.title ?? '')
+    const [debateDate, setDebateDate] = useState(initial?.debateDate ?? '')
+    const [debateFormat, setDebateFormat] = useState(initial?.debateFormat ?? '')
+    const [debateContext, setDebateContext] = useState(initial?.debateContext ?? '')
     const [topic, setTopic] = useState(initial?.topic ?? '')
     const [userPosition, setUserPosition] = useState(initial?.userPosition ?? '')
     const [opponents, setOpponents] = useState<Opponent[]>(initial?.opponents ?? [])
@@ -32,6 +35,9 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
         e.preventDefault()
         onSave({
             title: title || 'Untitled Preparation',
+            debateDate: debateDate || undefined,
+            debateFormat: debateFormat || undefined,
+            debateContext: debateContext || undefined,
             topic,
             userPosition,
             opponents: opponents.map(({ name, organization, knownPositions, debateStyle }) => ({
@@ -68,6 +74,42 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
                     </Button>
                 </div>
             </div>
+
+            {/* Debate Info */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Debate Info</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="text-sm text-muted-foreground">Date</label>
+                            <Input
+                                type="date"
+                                value={debateDate}
+                                onChange={(e) => setDebateDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-sm text-muted-foreground">Format</label>
+                            <Input
+                                placeholder="e.g. 1v1, Panel..."
+                                value={debateFormat}
+                                onChange={(e) => setDebateFormat(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-sm text-muted-foreground">Context / Notes</label>
+                        <Textarea
+                            placeholder="Any relevant context about the debate..."
+                            value={debateContext}
+                            onChange={(e) => setDebateContext(e.target.value)}
+                            rows={2}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Topic */}
             <Card>
