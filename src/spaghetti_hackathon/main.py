@@ -61,7 +61,7 @@ try:
 except Exception as e:
     logger.warning(f"Migration check skipped: {e}")
 
-app = FastAPI(title="Debate Prep API", version="1.0.0")
+app = FastAPI(title="Daemonsthenes API", version="1.0.0")
 
 # CORS (allow Vite dev server)
 app.add_middleware(
