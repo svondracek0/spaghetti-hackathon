@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from .database import engine, get_db, Base
 from . import schemas, crud, models
 from .newsmatics import search_news_for_topic
+from .knowledgebase import kb_manager
+from .kb_cron import kb_cron_loop, run_initial_ingestion
 from .llm import (
     enrich_opponent,
     generate_discovery_queries,
@@ -22,7 +25,17 @@ logger = logging.getLogger(__name__)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Debate Prep API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start KB cron on startup, stop on shutdown."""
+    cron_task = asyncio.create_task(kb_cron_loop())
+    yield
+    cron_task.cancel()
+    await kb_manager.close_all()
+
+
+app = FastAPI(title="Debate Prep API", version="1.0.0", lifespan=lifespan)
 
 # CORS (allow Vite dev server)
 app.add_middleware(
@@ -80,6 +93,173 @@ def delete_preparation(prep_id: str, db: Session = Depends(get_db)):
 def list_opponents(db: Session = Depends(get_db)):
     results = crud.get_all_opponents(db)
     return [schemas.OpponentResponse.model_validate(r).model_dump(mode="json", by_alias=True) for r in results]
+
+
+@app.post("/api/opponents")
+async def create_opponent(data: schemas.OpponentCreate, db: Session = Depends(get_db)):
+    """Create a new opponent. Auto-enriches using LLM if only name is provided."""
+    opp = models.Opponent(name=data.name)
+    if data.description:
+        opp.description = data.description
+    if data.organization:
+        opp.organization = data.organization
+    if data.known_positions:
+        opp.known_positions = data.known_positions
+    if data.debate_style:
+        opp.debate_style = data.debate_style
+    db.add(opp)
+    db.commit()
+    db.refresh(opp)
+
+    # Auto-enrich if only name was provided
+    needs_enrichment = not data.description and not data.organization
+    if needs_enrichment:
+        try:
+            enriched = await enrich_opponent(opp.name)
+            if enriched.get("description"):
+                opp.description = enriched["description"]
+            if enriched.get("organization"):
+                opp.organization = enriched["organization"]
+            if enriched.get("known_positions"):
+                opp.known_positions = enriched["known_positions"]
+            if enriched.get("debate_style"):
+                opp.debate_style = enriched["debate_style"]
+            db.commit()
+            db.refresh(opp)
+        except Exception as e:
+            logger.warning(f"⚠️ Opponent enrichment failed for '{opp.name}': {e}")
+
+    count = crud.get_opponent_encounter_count(db, opp.id)
+    return schemas.OpponentResponse.model_validate({
+        "id": opp.id,
+        "name": opp.name,
+        "description": opp.description,
+        "organization": opp.organization,
+        "known_positions": opp.known_positions,
+        "debate_style": opp.debate_style,
+        "previous_encounters": count,
+        "kb_enabled": opp.kb_enabled or False,
+        "kb_status": opp.kb_status or "idle",
+        "kb_article_count": opp.kb_article_count or 0,
+    }).model_dump(mode="json", by_alias=True)
+
+
+@app.get("/api/opponents/{opponent_id}")
+def get_opponent(opponent_id: str, db: Session = Depends(get_db)):
+    result = crud.get_opponent(db, opponent_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    return schemas.OpponentDetailResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+@app.delete("/api/opponents/{opponent_id}")
+async def delete_opponent(opponent_id: str, db: Session = Depends(get_db)):
+    """Delete an opponent and their associated Knowledge Base."""
+    opp = crud.get_opponent(db, opponent_id)
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+        
+    # Delete the underlying KB workspace
+    from .knowledgebase import kb_manager
+    await kb_manager.delete(opponent_id)
+    
+    # Delete the DB record
+    success = crud.delete_opponent(db, opponent_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete opponent")
+        
+    return {"status": "success", "message": "Opponent deleted"}
+
+
+# --- User Profile ---
+
+@app.get("/api/profile")
+def get_profile(db: Session = Depends(get_db)):
+    result = crud.get_user_profile(db)
+    return schemas.UserProfileResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+@app.put("/api/profile")
+def update_profile(data: schemas.UserProfileUpdate, db: Session = Depends(get_db)):
+    result = crud.update_user_profile(db, data)
+    return schemas.UserProfileResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+# --- Dashboard ---
+
+@app.get("/api/dashboard/stats")
+def dashboard_stats(db: Session = Depends(get_db)):
+    result = crud.get_dashboard_stats(db)
+    return schemas.DashboardStats.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+
+# --- Knowledgebase ---
+
+@app.post("/api/opponents/{opponent_id}/kb/enable")
+async def enable_kb(opponent_id: str, db: Session = Depends(get_db)):
+    result = crud.enable_kb(db, opponent_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    # Trigger initial historical ingestion in background
+    asyncio.create_task(run_initial_ingestion(result["id"], result["name"]))
+    return crud.get_kb_status(db, opponent_id)
+
+
+@app.post("/api/opponents/{opponent_id}/kb/disable")
+def disable_kb(opponent_id: str, db: Session = Depends(get_db)):
+    result = crud.disable_kb(db, opponent_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    return crud.get_kb_status(db, opponent_id)
+
+
+@app.get("/api/opponents/{opponent_id}/kb/status")
+def kb_status(opponent_id: str, db: Session = Depends(get_db)):
+    result = crud.get_kb_status(db, opponent_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    
+    # Inject the actual processed count from LightRAG
+    result["processed_count"] = kb_manager.get_processed_count(opponent_id)
+    
+    return schemas.KBStatusResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+@app.post("/api/opponents/{opponent_id}/kb/query")
+async def kb_query(opponent_id: str, data: schemas.KBQueryRequest, db: Session = Depends(get_db)):
+    status = crud.get_kb_status(db, opponent_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    if not status["enabled"]:
+        raise HTTPException(status_code=400, detail="Knowledgebase not enabled for this opponent")
+    if status["status"] not in ["ready", "ingesting"]:
+        raise HTTPException(status_code=400, detail=f"Knowledgebase is {status['status']}, not ready for queries")
+
+    try:
+        result = await kb_manager.query(opponent_id, data.query, data.mode)
+        return schemas.KBQueryResponse(
+            query=data.query,
+            mode=data.mode,
+            result=result,
+        ).model_dump(mode="json", by_alias=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"KB query failed: {str(e)}")
+
+
+@app.get("/api/opponents/{opponent_id}/kb/graph")
+def kb_graph(opponent_id: str, db: Session = Depends(get_db)):
+    status = crud.get_kb_status(db, opponent_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    if not status["enabled"]:
+        raise HTTPException(status_code=400, detail="Knowledgebase not enabled for this opponent")
+
+    graph_data = kb_manager.get_graph(opponent_id)
+    if not graph_data:
+        raise HTTPException(status_code=404, detail="Knowledge graph not generated yet")
+
+    return graph_data
 
 
 # --- Strategy Generation Pipeline ---

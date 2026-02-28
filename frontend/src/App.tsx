@@ -1,22 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Sidebar } from '@/components/Sidebar'
 import { PrepDetail } from '@/components/PrepDetail'
 import { PrepForm } from '@/components/PrepForm'
+import { Dashboard } from '@/components/Dashboard'
+import { OpponentDetail } from '@/components/OpponentDetail'
+import { UserProfile } from '@/components/UserProfile'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import type { Preparation, PreparationCreate, Opponent } from '@/types'
-import { Swords } from 'lucide-react'
-
-type View = 'empty' | 'detail' | 'create' | 'edit'
 
 function App() {
   const [preparations, setPreparations] = useState<Preparation[]>([])
   const [allOpponents, setAllOpponents] = useState<Opponent[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [view, setView] = useState<View>('empty')
   const [loading, setLoading] = useState(true)
-
-  const selectedPrep = preparations.find((p) => p.id === selectedId) ?? null
 
   const refresh = useCallback(async () => {
     try {
@@ -37,104 +34,171 @@ function App() {
     refresh()
   }, [refresh])
 
-  function handleSelect(id: string) {
-    setSelectedId(id)
-    setView('detail')
-  }
-
-  function handleNewPrep() {
-    setSelectedId(null)
-    setView('create')
-  }
-
-  async function handleSave(data: PreparationCreate) {
-    try {
-      if (view === 'edit' && selectedId) {
-        const updated = await api.updatePreparation(selectedId, data)
-        setPreparations((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-        setView('detail')
-      } else {
-        const created = await api.createPreparation(data)
-        setPreparations((prev) => [created, ...prev])
-        setSelectedId(created.id)
-        setView('detail')
-      }
-      // Refresh opponents list
-      const opps = await api.getOpponents()
-      setAllOpponents(opps)
-    } catch (err) {
-      console.error('Failed to save:', err)
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedId) return
-    try {
-      await api.deletePreparation(selectedId)
-      setPreparations((prev) => prev.filter((p) => p.id !== selectedId))
-      setSelectedId(null)
-      setView('empty')
-      const opps = await api.getOpponents()
-      setAllOpponents(opps)
-    } catch (err) {
-      console.error('Failed to delete:', err)
-    }
-  }
-
   return (
     <div className="flex h-screen bg-background">
-      <Sidebar
-        preparations={preparations}
-        selectedId={selectedId}
-        onSelect={handleSelect}
-        onNewPrep={handleNewPrep}
-      />
+      <Sidebar preparations={preparations} opponents={allOpponents} onDataChange={refresh} />
 
       <main className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full p-8">
+        <ScrollArea className="h-full">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-pulse text-muted-foreground">Loading...</div>
             </div>
-          ) : view === 'empty' ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                <Swords className="h-8 w-8 text-primary" />
-              </div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">
-                No preparation selected
-              </h2>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Select a preparation from the sidebar or create a new one to get started.
-              </p>
-            </div>
-          ) : view === 'create' ? (
-            <PrepForm
-              allOpponents={allOpponents}
-              onSave={handleSave}
-              onCancel={() => setView(selectedId ? 'detail' : 'empty')}
-            />
-          ) : view === 'edit' && selectedPrep ? (
-            <PrepForm
-              initial={selectedPrep}
-              allOpponents={allOpponents}
-              onSave={handleSave}
-              onCancel={() => setView('detail')}
-            />
-          ) : view === 'detail' && selectedPrep ? (
-            <PrepDetail
-              preparation={selectedPrep}
-              onEdit={() => setView('edit')}
-              onDelete={handleDelete}
-              onUpdate={(updated) => {
-                setPreparations((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-              }}
-            />
-          ) : null}
+          ) : (
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/preparations/new" element={
+                <PrepFormWrapper
+                  allOpponents={allOpponents}
+                  onSave={async (data) => {
+                    const created = await api.createPreparation(data)
+                    setPreparations((prev) => [created, ...prev])
+                    const opps = await api.getOpponents()
+                    setAllOpponents(opps)
+                    return created.id
+                  }}
+                />
+              } />
+              <Route path="/preparations/:id/edit" element={
+                <PrepEditWrapper
+                  preparations={preparations}
+                  allOpponents={allOpponents}
+                  onSave={async (id, data) => {
+                    const updated = await api.updatePreparation(id, data)
+                    setPreparations((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+                    const opps = await api.getOpponents()
+                    setAllOpponents(opps)
+                    return updated.id
+                  }}
+                />
+              } />
+              <Route path="/preparations/:id" element={
+                <PrepDetailWrapper
+                  preparations={preparations}
+                  setPreparations={setPreparations}
+                  setAllOpponents={setAllOpponents}
+                />
+              } />
+              <Route path="/opponents/:id" element={<OpponentDetailWrapper onDataChange={refresh} />} />
+              <Route path="/profile" element={<UserProfile />} />
+            </Routes>
+          )}
         </ScrollArea>
       </main>
     </div>
   )
+}
+
+/** Wrapper to handle prep creation with navigation */
+function PrepFormWrapper({
+  allOpponents,
+  onSave,
+}: {
+  allOpponents: Opponent[]
+  onSave: (data: PreparationCreate) => Promise<string>
+}) {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const presetDate = searchParams.get('date') || undefined
+
+  return (
+    <div className="p-8">
+      <PrepForm
+        initial={presetDate ? { debateDate: presetDate } as Preparation : undefined}
+        allOpponents={allOpponents}
+        onSave={async (data) => {
+          const id = await onSave(data)
+          navigate(`/preparations/${id}`)
+        }}
+        onCancel={() => navigate('/')}
+      />
+    </div>
+  )
+}
+
+/** Wrapper to handle prep editing with navigation */
+function PrepEditWrapper({
+  preparations,
+  allOpponents,
+  onSave,
+}: {
+  preparations: Preparation[]
+  allOpponents: Opponent[]
+  onSave: (id: string, data: PreparationCreate) => Promise<string>
+}) {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const prep = preparations.find((p) => p.id === id)
+
+  if (!prep) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <p className="text-muted-foreground">Preparation not found</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-8">
+      <PrepForm
+        initial={prep}
+        allOpponents={allOpponents}
+        onSave={async (data) => {
+          await onSave(id!, data)
+          navigate(`/preparations/${id}`)
+        }}
+        onCancel={() => navigate(`/preparations/${id}`)}
+      />
+    </div>
+  )
+}
+
+/** Wrapper to handle prep detail with navigation */
+function PrepDetailWrapper({
+  preparations,
+  setPreparations,
+  setAllOpponents,
+}: {
+  preparations: Preparation[]
+  setPreparations: React.Dispatch<React.SetStateAction<Preparation[]>>
+  setAllOpponents: React.Dispatch<React.SetStateAction<Opponent[]>>
+}) {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const prep = preparations.find((p) => p.id === id)
+
+  if (!prep) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <p className="text-muted-foreground">Preparation not found</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-8">
+      <PrepDetail
+        preparation={prep}
+        onEdit={() => navigate(`/preparations/${id}/edit`)}
+        onDelete={async () => {
+          await api.deletePreparation(id!)
+          setPreparations((prev) => prev.filter((p) => p.id !== id))
+          const opps = await api.getOpponents()
+          setAllOpponents(opps)
+          navigate('/')
+        }}
+        onUpdate={(updated) => {
+          setPreparations((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+        }}
+      />
+    </div>
+  )
+}
+
+/** Wrapper for opponent detail with navigation + data refresh on delete */
+function OpponentDetailWrapper({ onDataChange }: { onDataChange: () => Promise<void> }) {
+  const navigate = useNavigate()
+  return <OpponentDetail onDelete={async () => { await onDataChange(); navigate('/') }} />
 }
 
 export default App

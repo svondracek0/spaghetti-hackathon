@@ -235,3 +235,191 @@ def delete_preparation(db: Session, prep_id: str) -> bool:
     db.delete(prep)
     db.commit()
     return True
+
+
+def get_opponent(db: Session, opponent_id: str) -> dict | None:
+    """Get a single opponent with encounter count and associated preparations."""
+    opp = db.query(models.Opponent).filter(models.Opponent.id == opponent_id).first()
+    if not opp:
+        return None
+    count = get_opponent_encounter_count(db, opp.id)
+    preparations = []
+    for prep in opp.preparations:
+        preparations.append({
+            "id": prep.id,
+            "title": prep.title,
+            "debate_date": prep.debate_date,
+            "status": prep.status,
+            "opponent_count": len(prep.opponents),
+        })
+    return {
+        "id": opp.id,
+        "name": opp.name,
+        "description": opp.description,
+        "organization": opp.organization,
+        "known_positions": opp.known_positions,
+        "debate_style": opp.debate_style,
+        "previous_encounters": count,
+        "kb_enabled": opp.kb_enabled or False,
+        "kb_status": opp.kb_status or "idle",
+        "kb_article_count": opp.kb_article_count or 0,
+        "preparations": preparations,
+    }
+
+
+def delete_opponent(db: Session, opponent_id: str) -> bool:
+    """Delete an opponent and all their associated data, including strategy preparations associations."""
+    opp = db.query(models.Opponent).filter(models.Opponent.id == opponent_id).first()
+    if not opp:
+        return False
+        
+    db.delete(opp)
+    db.commit()
+    return True
+
+
+def get_user_profile(db: Session) -> dict:
+    """Get the singleton user profile, auto-creating if missing."""
+    profile = db.query(models.UserProfile).filter(models.UserProfile.id == "default").first()
+    if not profile:
+        profile = models.UserProfile(id="default")
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "bio": profile.bio,
+        "organization": profile.organization,
+        "is_public_figure": profile.is_public_figure,
+        "known_positions": profile.known_positions,
+        "debate_style": profile.debate_style,
+        "profile_image_url": profile.profile_image_url,
+        "updated_at": profile.updated_at,
+    }
+
+
+def update_user_profile(db: Session, data: schemas.UserProfileUpdate) -> dict:
+    """Update the singleton user profile."""
+    profile = db.query(models.UserProfile).filter(models.UserProfile.id == "default").first()
+    if not profile:
+        profile = models.UserProfile(id="default")
+        db.add(profile)
+        db.flush()
+
+    if data.name is not None:
+        profile.name = data.name
+    if data.bio is not None:
+        profile.bio = data.bio
+    if data.organization is not None:
+        profile.organization = data.organization
+    if data.is_public_figure is not None:
+        profile.is_public_figure = data.is_public_figure
+    if data.known_positions is not None:
+        profile.known_positions = data.known_positions
+    if data.debate_style is not None:
+        profile.debate_style = data.debate_style
+    if data.profile_image_url is not None:
+        profile.profile_image_url = data.profile_image_url
+
+    profile.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(profile)
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "bio": profile.bio,
+        "organization": profile.organization,
+        "is_public_figure": profile.is_public_figure,
+        "known_positions": profile.known_positions,
+        "debate_style": profile.debate_style,
+        "profile_image_url": profile.profile_image_url,
+        "updated_at": profile.updated_at,
+    }
+
+
+def get_dashboard_stats(db: Session) -> dict:
+    """Get aggregated dashboard statistics."""
+    from datetime import date
+
+    all_preps = db.query(models.Preparation).all()
+    all_opps = db.query(models.Opponent).all()
+
+    preparing_count = sum(1 for p in all_preps if p.status == "Preparing")
+    ready_count = sum(1 for p in all_preps if p.status == "Ready")
+
+    # Upcoming debates: preps with a future debate_date, sorted ascending
+    upcoming = []
+    today_str = date.today().isoformat()
+    for p in all_preps:
+        if p.debate_date and p.debate_date >= today_str:
+            upcoming.append({
+                "id": p.id,
+                "title": p.title,
+                "debate_date": p.debate_date,
+                "status": p.status,
+                "opponent_count": len(p.opponents),
+            })
+    upcoming.sort(key=lambda x: x["debate_date"])
+
+    # Top opponents by encounter count
+    opp_list = []
+    for opp in all_opps:
+        count = get_opponent_encounter_count(db, opp.id)
+        opp_list.append({
+            "id": opp.id,
+            "name": opp.name,
+            "description": opp.description,
+            "organization": opp.organization,
+            "known_positions": opp.known_positions,
+            "debate_style": opp.debate_style,
+            "previous_encounters": count,
+        })
+    opp_list.sort(key=lambda x: x["previous_encounters"], reverse=True)
+
+    return {
+        "total_preparations": len(all_preps),
+        "total_opponents": len(all_opps),
+        "preparing_count": preparing_count,
+        "ready_count": ready_count,
+        "upcoming_debates": upcoming[:10],
+        "top_opponents": opp_list[:6],
+    }
+
+
+# --- Knowledgebase ---
+
+def enable_kb(db: Session, opponent_id: str) -> dict | None:
+    """Enable KB for an opponent. Returns opponent info or None."""
+    opp = db.query(models.Opponent).filter(models.Opponent.id == opponent_id).first()
+    if not opp:
+        return None
+    opp.kb_enabled = True
+    if opp.kb_status == "idle":
+        opp.kb_status = "ingesting"
+    db.commit()
+    db.refresh(opp)
+    return {"id": opp.id, "name": opp.name, "kb_enabled": opp.kb_enabled, "kb_status": opp.kb_status}
+
+
+def disable_kb(db: Session, opponent_id: str) -> dict | None:
+    """Disable KB for an opponent (keeps data)."""
+    opp = db.query(models.Opponent).filter(models.Opponent.id == opponent_id).first()
+    if not opp:
+        return None
+    opp.kb_enabled = False
+    db.commit()
+    db.refresh(opp)
+    return {"id": opp.id, "name": opp.name, "kb_enabled": opp.kb_enabled, "kb_status": opp.kb_status}
+
+
+def get_kb_status(db: Session, opponent_id: str) -> dict | None:
+    """Get KB status for an opponent."""
+    opp = db.query(models.Opponent).filter(models.Opponent.id == opponent_id).first()
+    if not opp:
+        return None
+    return {
+        "enabled": opp.kb_enabled or False,
+        "status": opp.kb_status or "idle",
+        "last_ingested": opp.kb_last_ingested,
+    }

@@ -40,6 +40,9 @@ class OpponentCreate(OpponentBase):
 class OpponentResponse(OpponentBase):
     id: str
     previous_encounters: int = 0
+    kb_enabled: bool = False
+    kb_status: str = "idle"
+    kb_article_count: int = 0
 
 
 # --- Strategy Topic ---
@@ -102,3 +105,87 @@ class PreparationResponse(PreparationBase):
     updated_at: datetime
     opponents: list[OpponentResponse] = []
     strategy_topics: list[StrategyTopicResponse] = []
+
+
+# --- User Profile ---
+
+class UserProfileBase(CamelModel):
+    name: str = ""
+    bio: str = ""
+    organization: Optional[str] = None
+    is_public_figure: bool = False
+    known_positions: Optional[str] = None
+    debate_style: Optional[str] = None
+    profile_image_url: Optional[str] = None
+
+
+class UserProfileUpdate(CamelModel):
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    organization: Optional[str] = None
+    is_public_figure: Optional[bool] = None
+    known_positions: Optional[str] = None
+    debate_style: Optional[str] = None
+    profile_image_url: Optional[str] = None
+
+
+class UserProfileResponse(UserProfileBase):
+    id: str
+    updated_at: Optional[datetime] = None
+
+
+# --- Dashboard ---
+
+class PreparationSummary(CamelModel):
+    id: str
+    title: str
+    debate_date: Optional[str] = None
+    status: PreparationStatus = PreparationStatus.preparing
+    opponent_count: int = 0
+
+
+class DashboardStats(CamelModel):
+    total_preparations: int = 0
+    total_opponents: int = 0
+    preparing_count: int = 0
+    ready_count: int = 0
+    upcoming_debates: list[PreparationSummary] = []
+    top_opponents: list[OpponentResponse] = []
+
+
+# --- Opponent Detail ---
+
+class OpponentDetailResponse(OpponentResponse):
+    preparations: list[PreparationSummary] = []
+
+
+# --- News Trend ---
+
+class NewsTrendPoint(CamelModel):
+    month: str
+    count: int
+
+
+class NewsTrendResponse(CamelModel):
+    person_name: str
+    data: list[NewsTrendPoint] = []
+
+
+# --- Knowledgebase ---
+
+class KBStatusResponse(CamelModel):
+    enabled: bool = False
+    status: str = "idle"  # idle, ingesting, ready, error
+    processed_count: int = 0
+    last_ingested: Optional[datetime] = None
+
+
+class KBQueryRequest(CamelModel):
+    query: str
+    mode: str = "hybrid"  # naive, local, global, hybrid
+
+
+class KBQueryResponse(CamelModel):
+    query: str
+    mode: str
+    result: str

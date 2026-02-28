@@ -27,6 +27,9 @@ export interface Opponent {
     knownPositions?: string
     debateStyle?: string
     previousEncounters: number
+    kbEnabled?: boolean
+    kbStatus?: string
+    kbArticleCount?: number
 }
 
 export interface Preparation {
@@ -63,3 +66,92 @@ export interface PreparationCreate {
 }
 
 export type PreparationUpdate = Partial<PreparationCreate>
+
+// --- User Profile ---
+
+export interface UserProfile {
+    id: string
+    name: string
+    bio: string
+    organization?: string
+    isPublicFigure: boolean
+    knownPositions?: string
+    debateStyle?: string
+    profileImageUrl?: string
+    updatedAt?: string
+}
+
+export interface UserProfileUpdate {
+    name?: string
+    bio?: string
+    organization?: string
+    isPublicFigure?: boolean
+    knownPositions?: string
+    debateStyle?: string
+    profileImageUrl?: string
+}
+
+// --- Dashboard ---
+
+export interface PreparationSummary {
+    id: string
+    title: string
+    debateDate?: string
+    status: PreparationStatus
+    opponentCount: number
+}
+
+export interface DashboardStats {
+    totalPreparations: number
+    totalOpponents: number
+    preparingCount: number
+    readyCount: number
+    upcomingDebates: PreparationSummary[]
+    topOpponents: Opponent[]
+}
+
+// --- Opponent Detail ---
+
+export interface OpponentDetail extends Opponent {
+    preparations: PreparationSummary[]
+}
+
+// --- News Trend ---
+
+export interface NewsTrendPoint {
+    month: string
+    count: number
+}
+
+// --- Knowledgebase ---
+
+export interface KBStatus {
+    enabled: boolean;
+    status: 'idle' | 'ingesting' | 'ready' | 'error';
+    processedCount: number;
+    lastIngested: string | null;
+}
+
+export interface KBQueryResult {
+    query: string;
+    mode: string;
+    result: string;
+}
+
+export interface KBGraphNode {
+    id: string;
+    name: string;
+    type: string;
+    val: number;
+}
+
+export interface KBGraphLink {
+    source: string;
+    target: string;
+    label: string;
+}
+
+export interface KBGraphData {
+    nodes: KBGraphNode[];
+    links: KBGraphLink[];
+}

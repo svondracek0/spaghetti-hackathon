@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -149,7 +150,7 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-medium text-sm">{op.name}</span>
+                                            <Link to={`/opponents/${op.id}`} className="font-medium text-sm hover:text-primary transition-colors">{op.name}</Link>
                                             {op.organization && (
                                                 <span className="text-xs text-muted-foreground">— {op.organization}</span>
                                             )}

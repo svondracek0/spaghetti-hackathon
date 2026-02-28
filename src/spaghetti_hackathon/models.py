@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Table, Enum as SAEnum
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Table, Enum as SAEnum, Boolean, Integer
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -50,7 +50,14 @@ class Opponent(Base):
     known_positions = Column(Text, nullable=True)
     debate_style = Column(Text, nullable=True)
 
+    # Knowledgebase fields
+    kb_enabled = Column(Boolean, default=False)
+    kb_status = Column(String, default="idle")  # idle, ingesting, ready, error
+    kb_last_ingested = Column(DateTime, nullable=True)
+    kb_article_count = Column(Integer, default=0)
+
     preparations = relationship("Preparation", secondary=preparation_opponents, back_populates="opponents")
+    ingested_articles = relationship("IngestedArticle", back_populates="opponent", cascade="all, delete-orphan")
 
 
 class StrategyTopic(Base):
@@ -68,3 +75,29 @@ class StrategyTopic(Base):
     why_bad_for_opponent = Column(Text, default="")
 
     preparation = relationship("Preparation", back_populates="strategy_topics")
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profile"
+
+    id = Column(String, primary_key=True, default="default")
+    name = Column(String, nullable=False, default="")
+    bio = Column(Text, default="")
+    organization = Column(String, nullable=True)
+    is_public_figure = Column(Boolean, default=False)
+    known_positions = Column(Text, nullable=True)
+    debate_style = Column(Text, nullable=True)
+    profile_image_url = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class IngestedArticle(Base):
+    __tablename__ = "ingested_articles"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    opponent_id = Column(String, ForeignKey("opponents.id"), nullable=False)
+    article_id = Column(String, nullable=False)  # Newsmatics article ID
+    title = Column(String, default="")
+    ingested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    opponent = relationship("Opponent", back_populates="ingested_articles")

@@ -158,3 +158,16 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Knowledgebase data
+src/data/
+data/kb/
+
+# Frontend build output
+frontend/dist/

@@ -1,4 +1,4 @@
-import type { Preparation, PreparationCreate, PreparationUpdate, Opponent } from '@/types'
+import type { Preparation, PreparationCreate, PreparationUpdate, Opponent, OpponentDetail, UserProfile, UserProfileUpdate, DashboardStats, KBStatus, KBQueryResult } from '@/types'
 
 const API_BASE = '/api'
 
@@ -52,7 +52,54 @@ export const api = {
             method: 'POST',
         }),
 
-    // Opponents (for autocomplete)
+    // Opponents
     getOpponents: () =>
         request<Opponent[]>('/opponents'),
+
+    getOpponent: (id: string) =>
+        request<OpponentDetail>(`/opponents/${id}`),
+
+    createOpponent: (data: { name: string }) =>
+        request<Opponent>('/opponents', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    deleteOpponent: (id: string) =>
+        request<{ status: string, message: string }>(`/opponents/${id}`, {
+            method: 'DELETE',
+        }),
+
+    // User Profile
+    getProfile: () =>
+        request<UserProfile>('/profile'),
+
+    updateProfile: (data: UserProfileUpdate) =>
+        request<UserProfile>('/profile', {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    // Dashboard
+    getDashboardStats: () =>
+        request<DashboardStats>('/dashboard/stats'),
+
+    // Knowledgebase
+    enableKB: (opponentId: string) =>
+        request<KBStatus>(`/opponents/${opponentId}/kb/enable`, { method: 'POST' }),
+
+    disableKB: (opponentId: string) =>
+        request<KBStatus>(`/opponents/${opponentId}/kb/disable`, { method: 'POST' }),
+
+    getKBStatus: (opponentId: string) =>
+        request<KBStatus>(`/opponents/${opponentId}/kb/status`),
+
+    queryKB: (opponentId: string, query: string, mode: string = 'hybrid') =>
+        request<KBQueryResult>(`/opponents/${opponentId}/kb/query`, {
+            method: 'POST',
+            body: JSON.stringify({ query, mode }),
+        }),
+
+    getKBGraph: (opponentId: string) =>
+        request<any>(`/opponents/${opponentId}/kb/graph`),
 }

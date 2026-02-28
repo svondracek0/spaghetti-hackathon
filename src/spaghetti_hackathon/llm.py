@@ -19,12 +19,36 @@ MODEL = "gemini-2.5-flash"
 
 def _parse_json_response(text: str) -> dict | list:
     """Parse JSON from LLM response, handling markdown code blocks."""
+    if not text:
+        return {}
+        
     text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1]
-        text = text.rsplit("```", 1)[0]
-        text = text.strip()
-    return json.loads(text)
+    if "```json" in text:
+        text = text.split("```json")[-1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```")[-1].split("```")[0].strip()
+        
+    # Extract just the object or array portion if extra text exists
+    start = text.find("{")
+    start_arr = text.find("[")
+    
+    if start_arr != -1 and (start == -1 or start_arr < start):
+        text = text[start_arr:text.rfind("]")+1]
+    elif start != -1:
+        text = text[start:text.rfind("}")+1]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON normally: {e}. Attempting control character cleanup...")
+        # Sometimes Gemini hallucinates unescaped control chars, newlines, or tabs inside strings
+        import re
+        text = re.sub(r'[\x00-\x1F]+', ' ', text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Re-raise the original error if cleanup fails
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +133,9 @@ Respond ONLY with a JSON array of query strings:
         response = client.models.generate_content(
             model=MODEL,
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
         )
         queries = _parse_json_response(response.text)
         logger.info(f"✅ Generated {len(queries)} discovery queries")
@@ -168,6 +195,9 @@ Respond ONLY with valid JSON as a dict mapping topic names to lists of article I
         response = client.models.generate_content(
             model=MODEL,
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
         )
         clusters = _parse_json_response(response.text)
         if isinstance(clusters, dict):
@@ -268,6 +298,9 @@ Generate strategic questions, arguments, and analysis for this topic.
             contents=[
                 {"role": "user", "parts": [{"text": STRATEGY_SYSTEM_PROMPT + "\n\n" + user_prompt}]},
             ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
         )
         result = _parse_json_response(response.text)
         logger.info(f"✅ Strategy complete for topic: {topic_title}")
@@ -345,6 +378,9 @@ Respond ONLY with valid JSON:
         response = client.models.generate_content(
             model=MODEL,
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
         )
         result = _parse_json_response(response.text)
         logger.info("✅ Win strategy generated")
