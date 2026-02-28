@@ -6,9 +6,10 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from './StatusBadge'
 import { CitedText } from './CitedText'
 import { SourcePanel } from './SourcePanel'
+import { exportAsMarkdown, exportAsPdf } from '@/lib/export'
 import { api } from '@/lib/api'
 import type { Preparation, ArticleRef } from '@/types'
-import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2, BookOpen } from 'lucide-react'
+import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2, BookOpen, Download } from 'lucide-react'
 
 interface PrepDetailProps {
     preparation: Preparation
@@ -65,6 +66,27 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                     </div>
                 </div>
                 <div className="flex gap-2">
+                    {preparation.status === 'Ready' && (
+                        <div className="relative group">
+                            <Button variant="outline" size="sm">
+                                <Download className="h-3.5 w-3.5 mr-1.5" /> Export
+                            </Button>
+                            <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[140px]">
+                                <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 rounded-t-md transition-colors"
+                                    onClick={() => exportAsMarkdown(preparation)}
+                                >
+                                    📝 Markdown
+                                </button>
+                                <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 rounded-b-md transition-colors"
+                                    onClick={() => exportAsPdf(preparation)}
+                                >
+                                    📄 PDF
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <Button variant="outline" size="sm" onClick={onEdit}>
                         <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
                     </Button>
