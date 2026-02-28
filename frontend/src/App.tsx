@@ -16,6 +16,52 @@ function getSharedToken(): string | null {
   return match ? match[1]! : null
 }
 
+function AnimatedHero() {
+  const [showLogo, setShowLogo] = useState(false)
+  const [showDaemon, setShowDaemon] = useState(false)
+  const [showSthenes, setShowSthenes] = useState(false)
+  const [showSubtitle, setShowSubtitle] = useState(false)
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setShowLogo(true), 200)
+    const t2 = setTimeout(() => setShowDaemon(true), 700)
+    const t3 = setTimeout(() => setShowSthenes(true), 1200)
+    const t4 = setTimeout(() => setShowSubtitle(true), 1800)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4) }
+  }, [])
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] text-center">
+      <img
+        src={logo}
+        alt="Daemonsthenes Logo"
+        className={`h-48 w-48 object-contain mb-8 grayscale hover:grayscale-0 transition-all duration-700 ${showLogo ? 'opacity-60 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+      />
+      <h2 className="text-3xl font-extralight tracking-[0.2em] text-foreground mb-4">
+        <span
+          className={`inline-block transition-all duration-500 ${showDaemon ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+            }`}
+        >
+          DAEMON
+        </span>
+        <span
+          className={`inline-block transition-all duration-500 ${showSthenes ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
+            }`}
+        >
+          STHENES
+        </span>
+      </h2>
+      <p
+        className={`text-xs uppercase tracking-[0.3em] text-muted-foreground/70 font-medium max-w-sm transition-all duration-500 ${showSubtitle ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+          }`}
+      >
+        Strategic Intelligence for the Modern Debater
+      </p>
+    </div>
+  )
+}
+
 function App() {
   const sharedToken = getSharedToken()
 
@@ -115,15 +161,7 @@ function MainApp() {
               <div className="animate-pulse text-muted-foreground">Loading...</div>
             </div>
           ) : view === 'empty' ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <img src={logo} alt="Daemonsthenes Logo" className="h-48 w-48 object-contain mb-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-700" />
-              <h2 className="text-3xl font-extralight tracking-[0.2em] text-foreground mb-4">
-                DAEMONSTHENES
-              </h2>
-              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground/40 max-w-sm">
-                Strategic Intelligence for the Modern Debater
-              </p>
-            </div>
+            <AnimatedHero />
           ) : view === 'create' ? (
             <PrepForm
               allOpponents={allOpponents}
