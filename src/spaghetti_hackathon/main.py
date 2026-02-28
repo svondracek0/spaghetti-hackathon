@@ -22,6 +22,22 @@ logger = logging.getLogger(__name__)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Ensure new columns exist on older databases
+from sqlalchemy import text as sa_text, inspect as sa_inspect
+
+def _migrate_db():
+    inspector = sa_inspect(engine)
+    columns = [c["name"] for c in inspector.get_columns("strategy_topics")]
+    if "articles_json" not in columns:
+        with engine.begin() as conn:
+            conn.execute(sa_text('ALTER TABLE strategy_topics ADD COLUMN articles_json TEXT DEFAULT "[]"'))
+        logger.info("✅ Migrated: added articles_json column to strategy_topics")
+
+try:
+    _migrate_db()
+except Exception as e:
+    logger.warning(f"Migration check skipped: {e}")
+
 app = FastAPI(title="Debate Prep API", version="1.0.0")
 
 # CORS (allow Vite dev server)
@@ -262,12 +278,22 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
             llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
 
         article_ids = [a["article_id"] for a in articles if a.get("article_id")]
+        article_refs = [
+            schemas.ArticleRef(
+                article_id=a["article_id"],
+                title=a.get("title", ""),
+                url=a.get("url", ""),
+                publisher=a.get("publisher", ""),
+            )
+            for a in articles if a.get("article_id")
+        ]
         updated_topics.append(schemas.StrategyTopicCreate(
             title=st.get("title", ""),
             description=st.get("description", ""),
             stance=st.get("stance", ""),
             source="user",
             article_ids=article_ids,
+            articles=article_refs,
             sneaky_questions=llm_result.get("sneaky_questions", []),
             arguments=llm_result.get("arguments", []),
             why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),
@@ -291,12 +317,22 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
             logger.error(f"⚠️ Strategy generation failed for discovered topic '{cluster_name}': {e}")
             llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
 
+        article_refs = [
+            schemas.ArticleRef(
+                article_id=a["article_id"],
+                title=a.get("title", ""),
+                url=a.get("url", ""),
+                publisher=a.get("publisher", ""),
+            )
+            for a in cluster_arts if a.get("article_id")
+        ]
         updated_topics.append(schemas.StrategyTopicCreate(
             title=cluster_name,
             description=f"Discovered topic based on {len(cluster_arts)} articles",
             stance=user_position,
             source="discovered",
             article_ids=cluster_article_ids,
+            articles=article_refs,
             sneaky_questions=llm_result.get("sneaky_questions", []),
             arguments=llm_result.get("arguments", []),
             why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),

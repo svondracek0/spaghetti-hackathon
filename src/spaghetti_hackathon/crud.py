@@ -86,6 +86,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
 
     strategy_topics = []
     for st in prep.strategy_topics:
+        articles_raw = json.loads(st.articles_json) if st.articles_json else []
         strategy_topics.append({
             "id": st.id,
             "title": st.title,
@@ -93,6 +94,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
             "stance": st.stance,
             "source": st.source,
             "article_ids": _deserialize_json(st.article_ids_json),
+            "articles": articles_raw,
             "sneaky_questions": _deserialize_json(st.sneaky_questions_json),
             "arguments": _deserialize_json(st.arguments_json),
             "why_bad_for_opponent": st.why_bad_for_opponent,
@@ -150,6 +152,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
 
     # Add strategy topics
     for st_data in data.strategy_topics:
+        articles_dicts = [a.model_dump() for a in st_data.articles] if st_data.articles else []
         st = models.StrategyTopic(
             preparation_id=prep.id,
             title=st_data.title,
@@ -157,6 +160,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
             stance=st_data.stance,
             source=st_data.source,
             article_ids_json=_serialize_json(st_data.article_ids),
+            articles_json=json.dumps(articles_dicts),
             sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
             arguments_json=_serialize_json(st_data.arguments),
             why_bad_for_opponent=st_data.why_bad_for_opponent,
@@ -210,6 +214,7 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
         db.flush()
 
         for st_data in data.strategy_topics:
+            articles_dicts = [a.model_dump() for a in st_data.articles] if st_data.articles else []
             st = models.StrategyTopic(
                 preparation_id=prep.id,
                 title=st_data.title,
@@ -217,6 +222,7 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
                 stance=st_data.stance,
                 source=st_data.source,
                 article_ids_json=_serialize_json(st_data.article_ids),
+                articles_json=json.dumps(articles_dicts),
                 sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
                 arguments_json=_serialize_json(st_data.arguments),
                 why_bad_for_opponent=st_data.why_bad_for_opponent,

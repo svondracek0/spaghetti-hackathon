@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from './StatusBadge'
+import { CitedText } from './CitedText'
+import { SourcePanel } from './SourcePanel'
 import { api } from '@/lib/api'
-import type { Preparation } from '@/types'
-import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2 } from 'lucide-react'
+import type { Preparation, ArticleRef } from '@/types'
+import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2, BookOpen } from 'lucide-react'
 
 interface PrepDetailProps {
     preparation: Preparation
@@ -18,6 +20,13 @@ interface PrepDetailProps {
 export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDetailProps) {
     const [generating, setGenerating] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [sourcePanelArticles, setSourcePanelArticles] = useState<ArticleRef[]>([])
+    const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
+
+    function openSources(articles: ArticleRef[]) {
+        setSourcePanelArticles(articles)
+        setSourcePanelOpen(true)
+    }
 
     async function handleGenerate() {
         setGenerating(true)
@@ -238,7 +247,9 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                                 <span className="text-xs text-muted-foreground uppercase tracking-wider">Arguments</span>
                                 <ul className="mt-1.5 space-y-1">
                                     {st.arguments.map((a, aIdx) => (
-                                        <li key={aIdx} className="text-sm pl-2 border-l-2 border-primary/30">{a}</li>
+                                        <li key={aIdx} className="text-sm pl-2 border-l-2 border-primary/30">
+                                            <CitedText text={a} articles={st.articles || []} />
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
@@ -247,16 +258,23 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                         {st.whyBadForOpponent && (
                             <div>
                                 <span className="text-xs text-muted-foreground uppercase tracking-wider">Why Bad for Opponent</span>
-                                <p className="text-sm mt-0.5 whitespace-pre-wrap text-destructive/80">{st.whyBadForOpponent}</p>
+                                <p className="text-sm mt-0.5 whitespace-pre-wrap text-destructive/80">
+                                    <CitedText text={st.whyBadForOpponent} articles={st.articles || []} />
+                                </p>
                             </div>
                         )}
 
-                        {st.articleIds.length > 0 && (
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs text-muted-foreground">Articles:</span>
-                                {st.articleIds.map((id, aIdx) => (
-                                    <Badge key={aIdx} variant="outline" className="text-xs">{id}</Badge>
-                                ))}
+                        {(st.articles?.length > 0 || st.articleIds.length > 0) && (
+                            <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                                    onClick={() => openSources(st.articles || [])}
+                                >
+                                    <BookOpen className="h-3 w-3" />
+                                    {st.articles?.length || st.articleIds.length} source{(st.articles?.length || st.articleIds.length) !== 1 ? 's' : ''}
+                                </Button>
                             </div>
                         )}
                     </CardContent>
@@ -267,6 +285,13 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
             <p className="text-xs text-muted-foreground/50 text-center pb-6">
                 Created {new Date(preparation.createdAt).toLocaleString()} · Updated {new Date(preparation.updatedAt).toLocaleString()}
             </p>
+
+            {/* Source panel overlay */}
+            <SourcePanel
+                articles={sourcePanelArticles}
+                open={sourcePanelOpen}
+                onClose={() => setSourcePanelOpen(false)}
+            />
         </div>
     )
 }

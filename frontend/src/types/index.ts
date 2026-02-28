@@ -1,5 +1,12 @@
 export type PreparationStatus = 'Preparing' | 'Ready'
 
+export interface ArticleRef {
+    articleId: string
+    title: string
+    url: string
+    publisher: string
+}
+
 export interface StrategyTopic {
     id: string
     title: string
@@ -7,6 +14,7 @@ export interface StrategyTopic {
     stance: string
     source: 'user' | 'discovered'
     articleIds: string[]
+    articles: ArticleRef[]
     sneakyQuestions: string[]
     arguments: string[]
     whyBadForOpponent: string
