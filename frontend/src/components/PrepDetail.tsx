@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,8 +8,8 @@ import { CitedText } from './CitedText'
 import { SourcePanel } from './SourcePanel'
 import { exportAsMarkdown, exportAsPdf } from '@/lib/export'
 import { api } from '@/lib/api'
-import type { Preparation, ArticleRef } from '@/types'
-import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2, BookOpen, Download } from 'lucide-react'
+import type { Preparation, ArticleRef, StrategyTopic } from '@/types'
+import { Calendar, Users, Pencil, Trash2, Swords, MessageCircleQuestion, Target, FileText, Sparkles, Loader2, BookOpen, Download, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface PrepDetailProps {
     preparation: Preparation
@@ -24,6 +24,78 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
     const [sourcePanelArticles, setSourcePanelArticles] = useState<ArticleRef[]>([])
     const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
 
+    // Collapsible state: track which topic indices are expanded
+    const [expandedTopics, setExpandedTopics] = useState<Set<number>>(new Set())
+
+    // Drag-and-drop reordering state
+    const [topicOrder, setTopicOrder] = useState<number[] | null>(null)
+    const dragIdx = useRef<number | null>(null)
+    const dragOverIdx = useRef<number | null>(null)
+
+    // Derive ordered topics
+    const orderedTopics: StrategyTopic[] = (() => {
+        if (!topicOrder) return preparation.strategyTopics
+        return topicOrder.map((i: number) => preparation.strategyTopics[i]!).filter(Boolean)
+    })()
+
+    // Reset order when preparation changes
+    const prevPrepId = useRef(preparation.id)
+    if (prevPrepId.current !== preparation.id) {
+        prevPrepId.current = preparation.id
+        setTopicOrder(null)
+        setExpandedTopics(new Set())
+    }
+
+    const toggleTopic = useCallback((idx: number) => {
+        setExpandedTopics((prev: Set<number>) => {
+            const next = new Set(prev)
+            if (next.has(idx)) next.delete(idx)
+            else next.add(idx)
+            return next
+        })
+    }, [])
+
+    const collapseAll = useCallback(() => setExpandedTopics(new Set()), [])
+    const expandAll = useCallback(() => {
+        setExpandedTopics(new Set(preparation.strategyTopics.map((_, i) => i)))
+    }, [preparation.strategyTopics])
+
+    // Drag handlers
+    const handleDragStart = useCallback((idx: number) => {
+        dragIdx.current = idx
+    }, [])
+
+    const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+        e.preventDefault()
+        dragOverIdx.current = idx
+    }, [])
+
+    const handleDrop = useCallback(() => {
+        if (dragIdx.current === null || dragOverIdx.current === null || dragIdx.current === dragOverIdx.current) {
+            dragIdx.current = null
+            dragOverIdx.current = null
+            return
+        }
+        const currentOrder = topicOrder ?? preparation.strategyTopics.map((_, i) => i)
+        const newOrder = [...currentOrder]
+        const [moved] = newOrder.splice(dragIdx.current, 1)
+        newOrder.splice(dragOverIdx.current, 0, moved!)
+        setTopicOrder(newOrder)
+
+        // Remap expanded set to follow the moved items
+        const oldExpanded = expandedTopics
+        const newExpanded = new Set<number>()
+        newOrder.forEach((origIdx, newIdx) => {
+            // Find where origIdx was in currentOrder
+            const oldPos = currentOrder.indexOf(origIdx)
+            if (oldExpanded.has(oldPos)) newExpanded.add(newIdx)
+        })
+        setExpandedTopics(newExpanded)
+
+        dragIdx.current = null
+        dragOverIdx.current = null
+    }, [topicOrder, preparation.strategyTopics, expandedTopics])
+
     function openSources(articles: ArticleRef[]) {
         setSourcePanelArticles(articles)
         setSourcePanelOpen(true)
@@ -35,6 +107,8 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
         try {
             const updated = await api.generateStrategy(preparation.id)
             onUpdate(updated)
+            setTopicOrder(null)
+            setExpandedTopics(new Set())
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Generation failed')
         } finally {
@@ -235,73 +309,114 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
             </Card>
 
             {/* Strategy Topics */}
-            {preparation.strategyTopics.map((st, idx) => (
-                <Card key={idx}>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-primary" />
-                            {st.title || `Strategy Topic ${idx + 1}`}
-                            {st.source === 'discovered' && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-500/15 text-yellow-500 ml-1">
-                                    ✨ Discovered
-                                </Badge>
-                            )}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {st.sneakyQuestions.length > 0 && (
-                            <div>
-                                <span className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                    <MessageCircleQuestion className="h-3 w-3" /> Sneaky Questions
-                                </span>
-                                <ul className="mt-1.5 space-y-1">
-                                    {st.sneakyQuestions.map((q, qIdx) => (
-                                        <li key={qIdx} className="text-sm text-foreground/90 pl-2 border-l-2 border-preparing/30">
-                                            <CitedText text={q} articles={st.articles || []} />
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
+            {orderedTopics.length > 0 && (
+                <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">
+                        {orderedTopics.length} topic{orderedTopics.length !== 1 ? 's' : ''} · drag to reorder
+                    </span>
+                    <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={expandAll}>
+                            Expand all
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={collapseAll}>
+                            Collapse all
+                        </Button>
+                    </div>
+                </div>
+            )}
+            {orderedTopics.map((st, idx) => {
+                const isExpanded = expandedTopics.has(idx)
+                return (
+                    <Card
+                        key={`topic-${idx}`}
+                        draggable
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={handleDrop}
+                        className="transition-shadow hover:shadow-md cursor-grab active:cursor-grabbing"
+                    >
+                        <CardHeader
+                            className="pb-2 cursor-pointer select-none"
+                            onClick={() => toggleTopic(idx)}
+                        >
+                            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                                <GripVertical className="h-4 w-4 text-muted-foreground/50 shrink-0 cursor-grab" />
+                                {isExpanded ? (
+                                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                ) : (
+                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                )}
+                                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <span className="truncate">{st.title || `Strategy Topic ${idx + 1}`}</span>
+                                {st.source === 'discovered' && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-500/15 text-yellow-500 ml-1 shrink-0">
+                                        ✨ Discovered
+                                    </Badge>
+                                )}
+                                {!isExpanded && st.sneakyQuestions.length > 0 && (
+                                    <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">
+                                        {st.sneakyQuestions.length}Q · {st.arguments.length}A
+                                    </span>
+                                )}
+                            </CardTitle>
+                        </CardHeader>
+                        {isExpanded && (
+                            <CardContent className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                {st.sneakyQuestions.length > 0 && (
+                                    <div>
+                                        <span className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                            <MessageCircleQuestion className="h-3 w-3" /> Sneaky Questions
+                                        </span>
+                                        <ul className="mt-1.5 space-y-1">
+                                            {st.sneakyQuestions.map((q, qIdx) => (
+                                                <li key={qIdx} className="text-sm text-foreground/90 pl-2 border-l-2 border-preparing/30">
+                                                    <CitedText text={q} articles={st.articles || []} />
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
 
-                        {st.arguments.length > 0 && (
-                            <div>
-                                <span className="text-xs text-muted-foreground uppercase tracking-wider">Arguments</span>
-                                <ul className="mt-1.5 space-y-1">
-                                    {st.arguments.map((a, aIdx) => (
-                                        <li key={aIdx} className="text-sm pl-2 border-l-2 border-primary/30">
-                                            <CitedText text={a} articles={st.articles || []} />
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
+                                {st.arguments.length > 0 && (
+                                    <div>
+                                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Arguments</span>
+                                        <ul className="mt-1.5 space-y-1">
+                                            {st.arguments.map((a, aIdx) => (
+                                                <li key={aIdx} className="text-sm pl-2 border-l-2 border-primary/30">
+                                                    <CitedText text={a} articles={st.articles || []} />
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
 
-                        {st.whyBadForOpponent && (
-                            <div>
-                                <span className="text-xs text-muted-foreground uppercase tracking-wider">Why Bad for Opponent</span>
-                                <p className="text-sm mt-0.5 whitespace-pre-wrap text-destructive/80">
-                                    <CitedText text={st.whyBadForOpponent} articles={st.articles || []} />
-                                </p>
-                            </div>
-                        )}
+                                {st.whyBadForOpponent && (
+                                    <div>
+                                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Why Bad for Opponent</span>
+                                        <p className="text-sm mt-0.5 whitespace-pre-wrap text-destructive/80">
+                                            <CitedText text={st.whyBadForOpponent} articles={st.articles || []} />
+                                        </p>
+                                    </div>
+                                )}
 
-                        {(st.articles?.length > 0 || st.articleIds.length > 0) && (
-                            <div className="flex items-center gap-2 pt-1">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                                    onClick={() => openSources(st.articles || [])}
-                                >
-                                    <BookOpen className="h-3 w-3" />
-                                    {st.articles?.length || st.articleIds.length} source{(st.articles?.length || st.articleIds.length) !== 1 ? 's' : ''}
-                                </Button>
-                            </div>
+                                {(st.articles?.length > 0 || st.articleIds.length > 0) && (
+                                    <div className="flex items-center gap-2 pt-1">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                                            onClick={() => openSources(st.articles || [])}
+                                        >
+                                            <BookOpen className="h-3 w-3" />
+                                            {st.articles?.length || st.articleIds.length} source{(st.articles?.length || st.articleIds.length) !== 1 ? 's' : ''}
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardContent>
                         )}
-                    </CardContent>
-                </Card>
-            ))}
+                    </Card>
+                )
+            })}
 
             <Separator />
             <p className="text-xs text-muted-foreground/50 text-center pb-6">
