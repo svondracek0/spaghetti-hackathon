@@ -226,11 +226,21 @@ Your task is to generate:
 3. why_bad_for_opponent: A brief paragraph explaining why this topic is disadvantageous
    for the opponent, based on the evidence.
 
+## CITATION RULES (MANDATORY — follow exactly):
+- Articles are numbered 1, 2, 3, ... in the order they appear in the RELEVANT NEWS ARTICLES section.
+- Every factual claim MUST have an inline citation immediately after the claim.
+- Use ONLY the bracket format: [1], [2], [3] etc.
+- For multiple sources on one claim, place brackets next to each other: [1][3][5]
+- NEVER use parenthetical styles like (Art 1, 2) or (Articles 1, 2, 3) or (Article 1).
+- NEVER leave a paragraph or argument without at least one citation.
+- Place citations right after the specific sentence or clause they support, before the period.
+- Example: "The pipeline was damaged by a Russian strike [1][2]."
+
 Respond ONLY with valid JSON in this exact format:
 {
   "sneaky_questions": ["question1", "question2", ...],
-  "arguments": ["argument1", "argument2", ...],
-  "why_bad_for_opponent": "explanation..."
+  "arguments": ["argument1 with inline citations [1][2].", "argument2 [3].", ...],
+  "why_bad_for_opponent": "explanation with inline citations [1][4]..."
 }
 """
 

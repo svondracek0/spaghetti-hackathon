@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from . import models, schemas
@@ -86,6 +87,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
 
     strategy_topics = []
     for st in prep.strategy_topics:
+        articles_raw = json.loads(st.articles_json) if st.articles_json else []
         strategy_topics.append({
             "id": st.id,
             "title": st.title,
@@ -93,6 +95,7 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
             "stance": st.stance,
             "source": st.source,
             "article_ids": _deserialize_json(st.article_ids_json),
+            "articles": articles_raw,
             "sneaky_questions": _deserialize_json(st.sneaky_questions_json),
             "arguments": _deserialize_json(st.arguments_json),
             "why_bad_for_opponent": st.why_bad_for_opponent,
@@ -111,8 +114,19 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
         "user_position": prep.user_position,
         "win_strategy": prep.win_strategy,
         "key_arguments": _deserialize_json(prep.key_arguments_json),
+        "selected_timeframes": _deserialize_json(prep.selected_timeframes_json),
+        "share_token": prep.share_token,
         "opponents": opponents,
         "strategy_topics": strategy_topics,
+        "feedbacks": [
+            {
+                "id": fb.id,
+                "rating": fb.rating,
+                "comment": fb.comment or "",
+                "created_at": fb.created_at,
+            }
+            for fb in (prep.feedbacks or [])
+        ],
     }
 
 
@@ -139,6 +153,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
         user_position=data.user_position,
         win_strategy=data.win_strategy,
         key_arguments_json=_serialize_json(data.key_arguments),
+        selected_timeframes_json=_serialize_json([tf.model_dump(by_alias=False) for tf in data.selected_timeframes] if data.selected_timeframes is not None else []),
     )
     db.add(prep)
     db.flush()
@@ -150,6 +165,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
 
     # Add strategy topics
     for st_data in data.strategy_topics:
+        articles_dicts = [a.model_dump() for a in st_data.articles] if st_data.articles else []
         st = models.StrategyTopic(
             preparation_id=prep.id,
             title=st_data.title,
@@ -157,6 +173,7 @@ def create_preparation(db: Session, data: schemas.PreparationCreate) -> dict:
             stance=st_data.stance,
             source=st_data.source,
             article_ids_json=_serialize_json(st_data.article_ids),
+            articles_json=json.dumps(articles_dicts),
             sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
             arguments_json=_serialize_json(st_data.arguments),
             why_bad_for_opponent=st_data.why_bad_for_opponent,
@@ -192,6 +209,8 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
         prep.win_strategy = data.win_strategy
     if data.key_arguments is not None:
         prep.key_arguments_json = _serialize_json(data.key_arguments)
+    if data.selected_timeframes is not None:
+        prep.selected_timeframes_json = _serialize_json([tf.model_dump(by_alias=False) for tf in data.selected_timeframes])
 
     prep.updated_at = datetime.now(timezone.utc)
 
@@ -210,6 +229,7 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
         db.flush()
 
         for st_data in data.strategy_topics:
+            articles_dicts = [a.model_dump() for a in st_data.articles] if st_data.articles else []
             st = models.StrategyTopic(
                 preparation_id=prep.id,
                 title=st_data.title,
@@ -217,6 +237,7 @@ def update_preparation(db: Session, prep_id: str, data: schemas.PreparationUpdat
                 stance=st_data.stance,
                 source=st_data.source,
                 article_ids_json=_serialize_json(st_data.article_ids),
+                articles_json=json.dumps(articles_dicts),
                 sneaky_questions_json=_serialize_json(st_data.sneaky_questions),
                 arguments_json=_serialize_json(st_data.arguments),
                 why_bad_for_opponent=st_data.why_bad_for_opponent,
@@ -274,6 +295,26 @@ def delete_opponent(db: Session, opponent_id: str) -> bool:
         return False
         
     db.delete(opp)
+# --- Sharing ---
+
+def generate_share_token(db: Session, prep_id: str) -> str | None:
+    """Generate a unique share token for a preparation."""
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return None
+    if not prep.share_token:
+        prep.share_token = str(uuid.uuid4())[:12]
+        db.commit()
+        db.refresh(prep)
+    return prep.share_token
+
+
+def revoke_share_token(db: Session, prep_id: str) -> bool:
+    """Remove the share token to stop sharing."""
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return False
+    prep.share_token = None
     db.commit()
     return True
 
@@ -423,3 +464,43 @@ def get_kb_status(db: Session, opponent_id: str) -> dict | None:
         "status": opp.kb_status or "idle",
         "last_ingested": opp.kb_last_ingested,
     }
+def get_preparation_by_share_token(db: Session, token: str) -> dict | None:
+    prep = db.query(models.Preparation).filter(models.Preparation.share_token == token).first()
+    if not prep:
+        return None
+    return _prep_to_response(db, prep)
+
+
+# --- Feedback ---
+
+def add_feedback(db: Session, prep_id: str, data: schemas.FeedbackCreate) -> dict | None:
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return None
+    fb = models.Feedback(
+        preparation_id=prep_id,
+        rating=data.rating,
+        comment=data.comment,
+    )
+    db.add(fb)
+    db.commit()
+    db.refresh(fb)
+    return {
+        "id": fb.id,
+        "rating": fb.rating,
+        "comment": fb.comment or "",
+        "created_at": fb.created_at,
+    }
+
+
+def get_feedbacks(db: Session, prep_id: str) -> list[dict]:
+    feedbacks = db.query(models.Feedback).filter(models.Feedback.preparation_id == prep_id).order_by(models.Feedback.created_at.desc()).all()
+    return [
+        {
+            "id": fb.id,
+            "rating": fb.rating,
+            "comment": fb.comment or "",
+            "created_at": fb.created_at,
+        }
+        for fb in feedbacks
+    ]

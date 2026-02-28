@@ -17,7 +17,7 @@ export function PrepCard({ preparation, isSelected, onClick }: PrepCardProps) {
                 'w-full text-left p-3 rounded-lg border transition-all duration-200 cursor-pointer',
                 'hover:bg-accent/50 hover:border-accent-foreground/10',
                 isSelected
-                    ? 'bg-accent border-primary/30 shadow-[0_0_12px_rgba(99,102,241,0.08)]'
+                    ? 'bg-accent border-primary/30 shadow-[0_0_12px_rgba(255,255,255,0.08)]'
                     : 'bg-transparent border-transparent'
             )}
         >

@@ -1,4 +1,4 @@
-import type { Preparation, PreparationCreate, PreparationUpdate, Opponent, OpponentDetail, UserProfile, UserProfileUpdate, DashboardStats, KBStatus, KBQueryResult } from '@/types'
+import type { Preparation, PreparationCreate, PreparationUpdate, Opponent, OpponentDetail, UserProfile, UserProfileUpdate, DashboardStats, KBStatus, KBQueryResult, TimeframeData, Feedback } from '@/types'
 
 const API_BASE = '/api'
 
@@ -102,4 +102,31 @@ export const api = {
 
     getKBGraph: (opponentId: string) =>
         request<any>(`/opponents/${opponentId}/kb/graph`),
+
+    // Timeline
+    getRelevantTimeframes: (query: string) =>
+        request<TimeframeData>(`/relevant-timeframes?query=${encodeURIComponent(query)}`),
+
+    // Sharing
+    sharePreparation: (id: string) =>
+        request<{ shareToken: string }>(`/preparations/${id}/share`, { method: 'POST' }),
+
+    unsharePreparation: (id: string) =>
+        request<{ ok: boolean }>(`/preparations/${id}/share`, { method: 'DELETE' }),
+
+    getSharedPreparation: (token: string) =>
+        request<Preparation>(`/shared/${token}`),
+
+    // Feedback
+    addFeedback: (prepId: string, data: { rating: number; comment?: string }) =>
+        request<Feedback>(`/preparations/${prepId}/feedback`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    addSharedFeedback: (token: string, data: { rating: number; comment?: string }) =>
+        request<Feedback>(`/shared/${token}/feedback`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
 }

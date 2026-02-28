@@ -1,5 +1,12 @@
 export type PreparationStatus = 'Preparing' | 'Ready'
 
+export interface ArticleRef {
+    articleId: string
+    title: string
+    url: string
+    publisher: string
+}
+
 export interface StrategyTopic {
     id: string
     title: string
@@ -7,16 +14,48 @@ export interface StrategyTopic {
     stance: string
     source: 'user' | 'discovered'
     articleIds: string[]
+    articles: ArticleRef[]
     sneakyQuestions: string[]
     arguments: string[]
     whyBadForOpponent: string
 }
+
+export interface TimeframeBucket {
+    period: string
+    count: number
+}
+
+export interface TimeframeSuggestion {
+    from: string
+    to: string
+    label: string
+    totalArticles: number
+}
+
+export interface TimeframeData {
+    data: TimeframeBucket[]
+    suggestions: TimeframeSuggestion[]
+}
+
+export interface SelectedTimeframe {
+    from: string
+    to: string
+    label?: string
+}
+
 
 /** Simplified input for creation — backend generates the rest */
 export interface StrategyTopicInput {
     title: string
     description: string
     stance: string
+}
+
+export interface Feedback {
+    id: string
+    rating: number  // 1 = thumbs up, -1 = thumbs down
+    comment: string
+    createdAt: string
 }
 
 export interface Opponent {
@@ -38,6 +77,7 @@ export interface Preparation {
     status: PreparationStatus
     createdAt: string
     updatedAt: string
+    shareToken?: string | null
     // Debate Info
     debateDate?: string
     debateFormat?: string
@@ -45,12 +85,15 @@ export interface Preparation {
     // Topic
     topic: string
     userPosition: string
+    selectedTimeframes?: SelectedTimeframe[]
     // Opponents
     opponents: Opponent[]
     // Strategy
     winStrategy: string
     keyArguments: string[]
     strategyTopics: StrategyTopic[]
+    // Feedback
+    feedbacks: Feedback[]
 }
 
 export interface PreparationCreate {
@@ -61,6 +104,7 @@ export interface PreparationCreate {
     debateContext?: string
     topic?: string
     userPosition?: string
+    selectedTimeframes?: SelectedTimeframe[]
     opponents?: Omit<Opponent, 'id' | 'previousEncounters'>[]
     strategyTopics?: StrategyTopicInput[]
 }

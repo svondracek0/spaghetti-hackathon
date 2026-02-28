@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -18,13 +18,13 @@ from .llm import (
     generate_topic_strategy,
     generate_win_strategy,
 )
+from .timeline import get_relevant_timeframes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,8 +34,45 @@ async def lifespan(app: FastAPI):
     cron_task.cancel()
     await kb_manager.close_all()
 
+# Ensure new columns exist on older databases
+from sqlalchemy import text as sa_text, inspect as sa_inspect
 
-app = FastAPI(title="Debate Prep API", version="1.0.0", lifespan=lifespan)
+def _migrate_db():
+    inspector = sa_inspect(engine)
+    # Strategy topics: articles_json
+    columns = [c["name"] for c in inspector.get_columns("strategy_topics")]
+    if "articles_json" not in columns:
+        with engine.begin() as conn:
+            conn.execute(sa_text('ALTER TABLE strategy_topics ADD COLUMN articles_json TEXT DEFAULT "[]"'))
+        logger.info("✅ Migrated: added articles_json column to strategy_topics")
+
+    # Preparations: share_token
+    prep_columns = [c["name"] for c in inspector.get_columns("preparations")]
+    if "share_token" not in prep_columns:
+        with engine.begin() as conn:
+            conn.execute(sa_text('ALTER TABLE preparations ADD COLUMN share_token TEXT'))
+        logger.info("✅ Migrated: added share_token column to preparations")
+
+    # Feedbacks table
+    if not inspector.has_table("feedbacks"):
+        with engine.begin() as conn:
+            conn.execute(sa_text('''
+                CREATE TABLE feedbacks (
+                    id TEXT PRIMARY KEY,
+                    preparation_id TEXT NOT NULL REFERENCES preparations(id),
+                    rating INTEGER NOT NULL,
+                    comment TEXT DEFAULT '',
+                    created_at DATETIME
+                )
+            '''))
+        logger.info("✅ Migrated: created feedbacks table")
+
+try:
+    _migrate_db()
+except Exception as e:
+    logger.warning(f"Migration check skipped: {e}")
+
+app = FastAPI(title="Daemonsthenes API", version="1.0.0")
 
 # CORS (allow Vite dev server)
 app.add_middleware(
@@ -260,6 +297,66 @@ def kb_graph(opponent_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Knowledge graph not generated yet")
 
     return graph_data
+# --- Sharing ---
+
+@app.post("/api/preparations/{prep_id}/share")
+def share_preparation(prep_id: str, db: Session = Depends(get_db)):
+    """Generate a share link for a preparation."""
+    token = crud.generate_share_token(db, prep_id)
+    if token is None:
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return {"shareToken": token}
+
+
+@app.delete("/api/preparations/{prep_id}/share")
+def unshare_preparation(prep_id: str, db: Session = Depends(get_db)):
+    """Revoke sharing for a preparation."""
+    if not crud.revoke_share_token(db, prep_id):
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return {"ok": True}
+
+
+@app.get("/api/shared/{token}")
+def get_shared_preparation(token: str, db: Session = Depends(get_db)):
+    """Public read-only access to a shared preparation."""
+    result = crud.get_preparation_by_share_token(db, token)
+    if not result:
+        raise HTTPException(status_code=404, detail="Shared preparation not found or link expired")
+    return schemas.PreparationResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+# --- Feedback ---
+
+@app.post("/api/preparations/{prep_id}/feedback", status_code=201)
+def add_feedback(prep_id: str, data: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    result = crud.add_feedback(db, prep_id, data)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return JSONResponse(
+        content=schemas.FeedbackResponse.model_validate(result).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
+
+
+@app.get("/api/preparations/{prep_id}/feedback")
+def list_feedback(prep_id: str, db: Session = Depends(get_db)):
+    results = crud.get_feedbacks(db, prep_id)
+    return [schemas.FeedbackResponse.model_validate(r).model_dump(mode="json", by_alias=True) for r in results]
+
+
+# --- Feedback on shared preparations ---
+
+@app.post("/api/shared/{token}/feedback", status_code=201)
+def add_shared_feedback(token: str, data: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    """Allow anyone with the share link to leave feedback."""
+    prep_data = crud.get_preparation_by_share_token(db, token)
+    if not prep_data:
+        raise HTTPException(status_code=404, detail="Shared preparation not found")
+    result = crud.add_feedback(db, prep_data["id"], data)
+    return JSONResponse(
+        content=schemas.FeedbackResponse.model_validate(result).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
 
 
 # --- Strategy Generation Pipeline ---
@@ -335,12 +432,21 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # Step 2: Search articles for predefined topics
     async def _search_predefined():
         results = {}
+        tf_from, tf_to = None, None
+        selected_timeframes = prep.get("selected_timeframes", [])
+        if selected_timeframes and len(selected_timeframes) > 0:
+            tf_from = selected_timeframes[0].get("from")
+            tf_to = selected_timeframes[0].get("to")
+            logger.info(f"📅 Applying timeframe filter: {tf_from} to {tf_to}")
+
         for st in predefined_topics:
             try:
                 articles = await search_news_for_topic(
                     st.get("title", ""),
                     opponent_names,
                     debate_context,
+                    date_from=tf_from,
+                    date_to=tf_to,
                 )
                 results[st["id"]] = articles
                 logger.info(f"📰 Found {len(articles)} articles for predefined topic: {st.get('title')}")
@@ -393,10 +499,16 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
     # ── Step 3c: Discovery Search Execution ──
 
     all_discovered_articles = {}
+    tf_from, tf_to = None, None
+    selected_timeframes = prep.get("selected_timeframes", [])
+    if selected_timeframes and len(selected_timeframes) > 0:
+        tf_from = selected_timeframes[0].get("from")
+        tf_to = selected_timeframes[0].get("to")
+
     for query in discovery_queries:
         try:
             logger.info(f"🔎 Running discovery query: {query}")
-            articles = await search_news_for_topic(query, [], "")
+            articles = await search_news_for_topic(query, [], "", date_from=tf_from, date_to=tf_to)
             for a in articles:
                 aid = a.get("article_id")
                 if aid and aid not in predefined_article_ids and aid not in all_discovered_articles:
@@ -442,12 +554,22 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
             llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
 
         article_ids = [a["article_id"] for a in articles if a.get("article_id")]
+        article_refs = [
+            schemas.ArticleRef(
+                article_id=a["article_id"],
+                title=a.get("title", ""),
+                url=a.get("url", ""),
+                publisher=a.get("publisher", ""),
+            )
+            for a in articles if a.get("article_id")
+        ]
         updated_topics.append(schemas.StrategyTopicCreate(
             title=st.get("title", ""),
             description=st.get("description", ""),
             stance=st.get("stance", ""),
             source="user",
             article_ids=article_ids,
+            articles=article_refs,
             sneaky_questions=llm_result.get("sneaky_questions", []),
             arguments=llm_result.get("arguments", []),
             why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),
@@ -471,12 +593,22 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
             logger.error(f"⚠️ Strategy generation failed for discovered topic '{cluster_name}': {e}")
             llm_result = {"sneaky_questions": [], "arguments": [], "why_bad_for_opponent": ""}
 
+        article_refs = [
+            schemas.ArticleRef(
+                article_id=a["article_id"],
+                title=a.get("title", ""),
+                url=a.get("url", ""),
+                publisher=a.get("publisher", ""),
+            )
+            for a in cluster_arts if a.get("article_id")
+        ]
         updated_topics.append(schemas.StrategyTopicCreate(
             title=cluster_name,
             description=f"Discovered topic based on {len(cluster_arts)} articles",
             stance=user_position,
             source="discovered",
             article_ids=cluster_article_ids,
+            articles=article_refs,
             sneaky_questions=llm_result.get("sneaky_questions", []),
             arguments=llm_result.get("arguments", []),
             why_bad_for_opponent=llm_result.get("why_bad_for_opponent", ""),
@@ -524,6 +656,13 @@ async def generate_strategy(prep_id: str, db: Session = Depends(get_db)):
 
     return schemas.PreparationResponse.model_validate(result).model_dump(mode="json", by_alias=True)
 
+
+# --- Timeline ---
+@app.get("/api/relevant-timeframes")
+async def relevant_timeframes(query: str = Query(..., description="Search query for article counts")):
+    """Get article volume distribution and suggested peak timeframes for a query."""
+    result = await get_relevant_timeframes(query)
+    return result
 
 # --- Health ---
 

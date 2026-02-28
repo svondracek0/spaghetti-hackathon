@@ -6,11 +6,29 @@ import { PrepForm } from '@/components/PrepForm'
 import { Dashboard } from '@/components/Dashboard'
 import { OpponentDetail } from '@/components/OpponentDetail'
 import { UserProfile } from '@/components/UserProfile'
+import { SharedView } from '@/components/SharedView'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import type { Preparation, PreparationCreate, Opponent } from '@/types'
 
+// Simple client-side route detection for shared links
+function getSharedToken(): string | null {
+  const match = window.location.pathname.match(/^\/shared\/([^/]+)/)
+  return match ? match[1]! : null
+}
+
 function App() {
+  const sharedToken = getSharedToken()
+
+  // If this is a shared link, render the read-only shared view
+  if (sharedToken) {
+    return <SharedView token={sharedToken} />
+  }
+
+  return <MainApp />
+}
+
+function MainApp() {
   const [preparations, setPreparations] = useState<Preparation[]>([])
   const [allOpponents, setAllOpponents] = useState<Opponent[]>([])
   const [loading, setLoading] = useState(true)

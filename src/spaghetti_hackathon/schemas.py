@@ -45,6 +45,15 @@ class OpponentResponse(OpponentBase):
     kb_article_count: int = 0
 
 
+# --- Article Reference ---
+
+class ArticleRef(CamelModel):
+    article_id: str
+    title: str = ""
+    url: str = ""
+    publisher: str = ""
+
+
 # --- Strategy Topic ---
 
 class StrategyTopicBase(CamelModel):
@@ -53,6 +62,7 @@ class StrategyTopicBase(CamelModel):
     stance: str = ""
     source: str = "user"
     article_ids: list[str] = []
+    articles: list[ArticleRef] = []
     sneaky_questions: list[str] = []
     arguments: list[str] = []
     why_bad_for_opponent: str = ""
@@ -64,6 +74,14 @@ class StrategyTopicCreate(StrategyTopicBase):
 
 class StrategyTopicResponse(StrategyTopicBase):
     id: str
+
+
+# --- Timeframe ---
+
+class SelectedTimeframe(CamelModel):
+    from_: str = ""
+    to: str = ""
+    label: Optional[str] = None
 
 
 # --- Preparation ---
@@ -78,6 +96,7 @@ class PreparationBase(CamelModel):
     user_position: str = ""
     win_strategy: str = ""
     key_arguments: list[str] = []
+    selected_timeframes: list[SelectedTimeframe] = []
 
 
 class PreparationCreate(PreparationBase):
@@ -95,6 +114,7 @@ class PreparationUpdate(CamelModel):
     user_position: Optional[str] = None
     win_strategy: Optional[str] = None
     key_arguments: Optional[list[str]] = None
+    selected_timeframes: Optional[list[SelectedTimeframe]] = None
     opponents: Optional[list[OpponentCreate]] = None
     strategy_topics: Optional[list[StrategyTopicCreate]] = None
 
@@ -103,9 +123,24 @@ class PreparationResponse(PreparationBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    share_token: Optional[str] = None
     opponents: list[OpponentResponse] = []
     strategy_topics: list[StrategyTopicResponse] = []
+    feedbacks: list["FeedbackResponse"] = []
 
+
+# --- Feedback ---
+
+class FeedbackCreate(CamelModel):
+    rating: int  # 1 = thumbs up, -1 = thumbs down
+    comment: str = ""
+
+
+class FeedbackResponse(CamelModel):
+    id: str
+    rating: int
+    comment: str = ""
+    created_at: datetime
 
 # --- User Profile ---
 
