@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { PrepDetail } from '@/components/PrepDetail'
 import { PrepForm } from '@/components/PrepForm'
+import { SharedView } from '@/components/SharedView'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import type { Preparation, PreparationCreate, Opponent } from '@/types'
@@ -9,7 +10,24 @@ import { Swords } from 'lucide-react'
 
 type View = 'empty' | 'detail' | 'create' | 'edit'
 
+// Simple client-side route detection for shared links
+function getSharedToken(): string | null {
+  const match = window.location.pathname.match(/^\/shared\/([^/]+)/)
+  return match ? match[1]! : null
+}
+
 function App() {
+  const sharedToken = getSharedToken()
+
+  // If this is a shared link, render the read-only shared view
+  if (sharedToken) {
+    return <SharedView token={sharedToken} />
+  }
+
+  return <MainApp />
+}
+
+function MainApp() {
   const [preparations, setPreparations] = useState<Preparation[]>([])
   const [allOpponents, setAllOpponents] = useState<Opponent[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)

@@ -6,6 +6,8 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from './StatusBadge'
 import { CitedText } from './CitedText'
 import { SourcePanel } from './SourcePanel'
+import { ShareDialog } from './ShareDialog'
+import { FeedbackBar } from './FeedbackBar'
 import { exportAsMarkdown, exportAsPdf } from '@/lib/export'
 import { api } from '@/lib/api'
 import { TimelineExplorer } from './TimelineExplorer'
@@ -130,6 +132,9 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
                     </div>
                 </div>
                 <div className="flex gap-2">
+                    {preparation.status === 'Ready' && (
+                        <ShareDialog preparation={preparation} onUpdate={onUpdate} />
+                    )}
                     {preparation.status === 'Ready' && (
                         <div className="relative group">
                             <Button variant="outline" size="sm">
@@ -411,6 +416,20 @@ export function PrepDetail({ preparation, onEdit, onDelete, onUpdate }: PrepDeta
             })}
 
             <Separator />
+
+            {/* Feedback */}
+            {preparation.status === 'Ready' && (
+                <FeedbackBar
+                    feedbacks={preparation.feedbacks || []}
+                    onSubmit={async (rating, comment) => {
+                        await api.addFeedback(preparation.id, { rating, comment })
+                        // Refresh to get updated feedbacks
+                        const updated = await api.getPreparation(preparation.id)
+                        onUpdate(updated)
+                    }}
+                />
+            )}
+
             <p className="text-xs text-muted-foreground/50 text-center pb-6">
                 Created {new Date(preparation.createdAt).toLocaleString()} · Updated {new Date(preparation.updatedAt).toLocaleString()}
             </p>

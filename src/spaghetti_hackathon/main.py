@@ -28,11 +28,33 @@ from sqlalchemy import text as sa_text, inspect as sa_inspect
 
 def _migrate_db():
     inspector = sa_inspect(engine)
+    # Strategy topics: articles_json
     columns = [c["name"] for c in inspector.get_columns("strategy_topics")]
     if "articles_json" not in columns:
         with engine.begin() as conn:
             conn.execute(sa_text('ALTER TABLE strategy_topics ADD COLUMN articles_json TEXT DEFAULT "[]"'))
         logger.info("✅ Migrated: added articles_json column to strategy_topics")
+
+    # Preparations: share_token
+    prep_columns = [c["name"] for c in inspector.get_columns("preparations")]
+    if "share_token" not in prep_columns:
+        with engine.begin() as conn:
+            conn.execute(sa_text('ALTER TABLE preparations ADD COLUMN share_token TEXT'))
+        logger.info("✅ Migrated: added share_token column to preparations")
+
+    # Feedbacks table
+    if not inspector.has_table("feedbacks"):
+        with engine.begin() as conn:
+            conn.execute(sa_text('''
+                CREATE TABLE feedbacks (
+                    id TEXT PRIMARY KEY,
+                    preparation_id TEXT NOT NULL REFERENCES preparations(id),
+                    rating INTEGER NOT NULL,
+                    comment TEXT DEFAULT '',
+                    created_at DATETIME
+                )
+            '''))
+        logger.info("✅ Migrated: created feedbacks table")
 
 try:
     _migrate_db()
@@ -97,6 +119,68 @@ def delete_preparation(prep_id: str, db: Session = Depends(get_db)):
 def list_opponents(db: Session = Depends(get_db)):
     results = crud.get_all_opponents(db)
     return [schemas.OpponentResponse.model_validate(r).model_dump(mode="json", by_alias=True) for r in results]
+
+
+# --- Sharing ---
+
+@app.post("/api/preparations/{prep_id}/share")
+def share_preparation(prep_id: str, db: Session = Depends(get_db)):
+    """Generate a share link for a preparation."""
+    token = crud.generate_share_token(db, prep_id)
+    if token is None:
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return {"shareToken": token}
+
+
+@app.delete("/api/preparations/{prep_id}/share")
+def unshare_preparation(prep_id: str, db: Session = Depends(get_db)):
+    """Revoke sharing for a preparation."""
+    if not crud.revoke_share_token(db, prep_id):
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return {"ok": True}
+
+
+@app.get("/api/shared/{token}")
+def get_shared_preparation(token: str, db: Session = Depends(get_db)):
+    """Public read-only access to a shared preparation."""
+    result = crud.get_preparation_by_share_token(db, token)
+    if not result:
+        raise HTTPException(status_code=404, detail="Shared preparation not found or link expired")
+    return schemas.PreparationResponse.model_validate(result).model_dump(mode="json", by_alias=True)
+
+
+# --- Feedback ---
+
+@app.post("/api/preparations/{prep_id}/feedback", status_code=201)
+def add_feedback(prep_id: str, data: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    result = crud.add_feedback(db, prep_id, data)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Preparation not found")
+    return JSONResponse(
+        content=schemas.FeedbackResponse.model_validate(result).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
+
+
+@app.get("/api/preparations/{prep_id}/feedback")
+def list_feedback(prep_id: str, db: Session = Depends(get_db)):
+    results = crud.get_feedbacks(db, prep_id)
+    return [schemas.FeedbackResponse.model_validate(r).model_dump(mode="json", by_alias=True) for r in results]
+
+
+# --- Feedback on shared preparations ---
+
+@app.post("/api/shared/{token}/feedback", status_code=201)
+def add_shared_feedback(token: str, data: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    """Allow anyone with the share link to leave feedback."""
+    prep_data = crud.get_preparation_by_share_token(db, token)
+    if not prep_data:
+        raise HTTPException(status_code=404, detail="Shared preparation not found")
+    result = crud.add_feedback(db, prep_data["id"], data)
+    return JSONResponse(
+        content=schemas.FeedbackResponse.model_validate(result).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
 
 
 # --- Strategy Generation Pipeline ---

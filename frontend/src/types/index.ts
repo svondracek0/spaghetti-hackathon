@@ -51,6 +51,13 @@ export interface StrategyTopicInput {
     stance: string
 }
 
+export interface Feedback {
+    id: string
+    rating: number  // 1 = thumbs up, -1 = thumbs down
+    comment: string
+    createdAt: string
+}
+
 export interface Opponent {
     id: string
     name: string
@@ -67,6 +74,7 @@ export interface Preparation {
     status: PreparationStatus
     createdAt: string
     updatedAt: string
+    shareToken?: string | null
     // Debate Info
     debateDate?: string
     debateFormat?: string
@@ -81,6 +89,8 @@ export interface Preparation {
     winStrategy: string
     keyArguments: string[]
     strategyTopics: StrategyTopic[]
+    // Feedback
+    feedbacks: Feedback[]
 }
 
 export interface PreparationCreate {

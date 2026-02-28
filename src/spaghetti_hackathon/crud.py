@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from . import models, schemas
@@ -114,8 +115,18 @@ def _prep_to_response(db: Session, prep: models.Preparation) -> dict:
         "win_strategy": prep.win_strategy,
         "key_arguments": _deserialize_json(prep.key_arguments_json),
         "selected_timeframes": _deserialize_json(prep.selected_timeframes_json),
+        "share_token": prep.share_token,
         "opponents": opponents,
         "strategy_topics": strategy_topics,
+        "feedbacks": [
+            {
+                "id": fb.id,
+                "rating": fb.rating,
+                "comment": fb.comment or "",
+                "created_at": fb.created_at,
+            }
+            for fb in (prep.feedbacks or [])
+        ],
     }
 
 
@@ -245,3 +256,69 @@ def delete_preparation(db: Session, prep_id: str) -> bool:
     db.delete(prep)
     db.commit()
     return True
+
+
+# --- Sharing ---
+
+def generate_share_token(db: Session, prep_id: str) -> str | None:
+    """Generate a unique share token for a preparation."""
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return None
+    if not prep.share_token:
+        prep.share_token = str(uuid.uuid4())[:12]
+        db.commit()
+        db.refresh(prep)
+    return prep.share_token
+
+
+def revoke_share_token(db: Session, prep_id: str) -> bool:
+    """Remove the share token to stop sharing."""
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return False
+    prep.share_token = None
+    db.commit()
+    return True
+
+
+def get_preparation_by_share_token(db: Session, token: str) -> dict | None:
+    prep = db.query(models.Preparation).filter(models.Preparation.share_token == token).first()
+    if not prep:
+        return None
+    return _prep_to_response(db, prep)
+
+
+# --- Feedback ---
+
+def add_feedback(db: Session, prep_id: str, data: schemas.FeedbackCreate) -> dict | None:
+    prep = db.query(models.Preparation).filter(models.Preparation.id == prep_id).first()
+    if not prep:
+        return None
+    fb = models.Feedback(
+        preparation_id=prep_id,
+        rating=data.rating,
+        comment=data.comment,
+    )
+    db.add(fb)
+    db.commit()
+    db.refresh(fb)
+    return {
+        "id": fb.id,
+        "rating": fb.rating,
+        "comment": fb.comment or "",
+        "created_at": fb.created_at,
+    }
+
+
+def get_feedbacks(db: Session, prep_id: str) -> list[dict]:
+    feedbacks = db.query(models.Feedback).filter(models.Feedback.preparation_id == prep_id).order_by(models.Feedback.created_at.desc()).all()
+    return [
+        {
+            "id": fb.id,
+            "rating": fb.rating,
+            "comment": fb.comment or "",
+            "created_at": fb.created_at,
+        }
+        for fb in feedbacks
+    ]

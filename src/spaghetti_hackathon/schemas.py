@@ -120,5 +120,21 @@ class PreparationResponse(PreparationBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    share_token: Optional[str] = None
     opponents: list[OpponentResponse] = []
     strategy_topics: list[StrategyTopicResponse] = []
+    feedbacks: list["FeedbackResponse"] = []
+
+
+# --- Feedback ---
+
+class FeedbackCreate(CamelModel):
+    rating: int  # 1 = thumbs up, -1 = thumbs down
+    comment: str = ""
+
+
+class FeedbackResponse(CamelModel):
+    id: str
+    rating: int
+    comment: str = ""
+    created_at: datetime
