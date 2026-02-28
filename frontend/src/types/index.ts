@@ -20,6 +20,30 @@ export interface StrategyTopic {
     whyBadForOpponent: string
 }
 
+export interface TimeframeBucket {
+    period: string
+    count: number
+}
+
+export interface TimeframeSuggestion {
+    from: string
+    to: string
+    label: string
+    totalArticles: number
+}
+
+export interface TimeframeData {
+    data: TimeframeBucket[]
+    suggestions: TimeframeSuggestion[]
+}
+
+export interface SelectedTimeframe {
+    from: string
+    to: string
+    label?: string
+}
+
+
 /** Simplified input for creation — backend generates the rest */
 export interface StrategyTopicInput {
     title: string
@@ -50,6 +74,7 @@ export interface Preparation {
     // Topic
     topic: string
     userPosition: string
+    selectedTimeframes?: SelectedTimeframe[]
     // Opponents
     opponents: Opponent[]
     // Strategy
@@ -66,6 +91,7 @@ export interface PreparationCreate {
     debateContext?: string
     topic?: string
     userPosition?: string
+    selectedTimeframes?: SelectedTimeframe[]
     opponents?: Omit<Opponent, 'id' | 'previousEncounters'>[]
     strategyTopics?: StrategyTopicInput[]
 }

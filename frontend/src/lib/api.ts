@@ -1,4 +1,4 @@
-import type { Preparation, PreparationCreate, PreparationUpdate, Opponent } from '@/types'
+import type { Preparation, PreparationCreate, PreparationUpdate, Opponent, TimeframeData } from '@/types'
 
 const API_BASE = '/api'
 
@@ -53,6 +53,11 @@ export const api = {
         }),
 
     // Opponents (for autocomplete)
+    // Opponents (for autocomplete)
     getOpponents: () =>
         request<Opponent[]>('/opponents'),
+
+    // Timeline
+    getRelevantTimeframes: (query: string) =>
+        request<TimeframeData>(`/relevant-timeframes?query=${encodeURIComponent(query)}`),
 }

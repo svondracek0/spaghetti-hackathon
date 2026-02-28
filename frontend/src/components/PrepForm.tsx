@@ -5,7 +5,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { OpponentAutocomplete } from './OpponentAutocomplete'
-import type { Preparation, PreparationCreate, Opponent, StrategyTopicInput } from '@/types'
+import { TimelineExplorer } from './TimelineExplorer'
+import type { Preparation, PreparationCreate, Opponent, StrategyTopicInput, SelectedTimeframe } from '@/types'
 import { Plus, Trash2, Save, X } from 'lucide-react'
 
 interface PrepFormProps {
@@ -17,12 +18,10 @@ interface PrepFormProps {
 
 export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormProps) {
     const [title, setTitle] = useState(initial?.title ?? '')
-    const [debateDate, setDebateDate] = useState(initial?.debateDate ?? '')
-    const [debateFormat, setDebateFormat] = useState(initial?.debateFormat ?? '')
-    const [debateContext, setDebateContext] = useState(initial?.debateContext ?? '')
     const [topic, setTopic] = useState(initial?.topic ?? '')
     const [userPosition, setUserPosition] = useState(initial?.userPosition ?? '')
     const [opponents, setOpponents] = useState<Opponent[]>(initial?.opponents ?? [])
+    const [selectedTimeframes, setSelectedTimeframes] = useState<SelectedTimeframe[]>(initial?.selectedTimeframes ?? [])
     const [strategyTopics, setStrategyTopics] = useState<StrategyTopicInput[]>(
         initial?.strategyTopics?.length
             ? initial.strategyTopics.map(({ title, description, stance }) => ({ title, description, stance }))
@@ -33,9 +32,6 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
         e.preventDefault()
         onSave({
             title: title || 'Untitled Preparation',
-            debateDate: debateDate || undefined,
-            debateFormat: debateFormat || undefined,
-            debateContext,
             topic,
             userPosition,
             opponents: opponents.map(({ name, organization, knownPositions, debateStyle }) => ({
@@ -44,6 +40,7 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
                 knownPositions,
                 debateStyle,
             })),
+            selectedTimeframes,
             strategyTopics: strategyTopics.filter((st) => st.title.trim()),
         })
     }
@@ -71,38 +68,6 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
                     </Button>
                 </div>
             </div>
-
-            {/* Debate Info */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Debate Info</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-sm text-muted-foreground">Date</label>
-                            <Input type="date" value={debateDate} onChange={(e) => setDebateDate(e.target.value)} />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-sm text-muted-foreground">Format</label>
-                            <Input
-                                placeholder="e.g. Panel, 1v1, Roundtable"
-                                value={debateFormat}
-                                onChange={(e) => setDebateFormat(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-sm text-muted-foreground">Context</label>
-                        <Textarea
-                            placeholder="Venue, audience, rules, etc."
-                            value={debateContext}
-                            onChange={(e) => setDebateContext(e.target.value)}
-                            rows={3}
-                        />
-                    </div>
-                </CardContent>
-            </Card>
 
             {/* Topic */}
             <Card>
@@ -156,6 +121,16 @@ export function PrepForm({ initial, allOpponents, onSave, onCancel }: PrepFormPr
                     />
                 </CardContent>
             </Card>
+
+            {/* Research Timeframes */}
+            <TimelineExplorer
+                query={[
+                    topic ? `"${topic}"` : '',
+                    opponents.length > 0 ? `"${opponents.map(o => o.name).join(' ')}"` : ''
+                ].filter(Boolean).join(' & ')}
+                selectedTimeframes={selectedTimeframes}
+                onSelect={setSelectedTimeframes}
+            />
 
             {/* Strategy Topics (user provides skeleton — backend generates the rest) */}
             <div className="space-y-4">
